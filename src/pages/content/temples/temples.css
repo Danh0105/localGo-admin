@@ -1,0 +1,120 @@
+.temples-page,
+.temple-form-page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.temples-page__header,
+.temple-form-page__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.temples-page__header h3,
+.temple-form-page__header h3 {
+  margin: 0 0 4px;
+}
+
+.temples-page__filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.temples-page__no-image {
+  display: grid;
+  width: 64px;
+  height: 44px;
+  place-items: center;
+  border-radius: 6px;
+  background: #f0f2f5;
+  color: #8c8c8c;
+  font-size: 11px;
+}
+
+.temple-form-page__form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.temple-form-page__save-error {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.temple-form-page__save-error ul {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.temple-form-page__dynamic-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.temple-form-page__dynamic-row:last-child {
+  border-bottom: 0;
+}
+
+.temple-form-page__event > .ant-form-item:first-child {
+  width: 220px;
+}
+
+.temple-form-page__event > .ant-form-item:nth-child(2) {
+  flex: 1;
+}
+
+.temple-preview img {
+  max-height: 280px;
+  object-fit: cover;
+  border-radius: 10px;
+}
+
+.about-image-upload {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.about-image-upload__preview,
+.about-image-upload__placeholder {
+  display: grid;
+  width: 160px;
+  height: 100px;
+  flex: 0 0 160px;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 8px;
+  background: #f0f2f5;
+  color: #8c8c8c;
+}
+
+@media (max-width: 768px) {
+  .temples-page__header,
+  .temple-form-page__header,
+  .temple-form-page__dynamic-row {
+    flex-direction: column;
+  }
+
+  .temples-page__filters .ant-input-search,
+  .temples-page__filters .ant-select,
+  .temple-form-page__event > .ant-form-item:first-child {
+    width: 100% !important;
+  }
+
+  .temple-form-page__dynamic-row > * {
+    width: 100%;
+  }
+}

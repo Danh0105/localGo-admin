@@ -1,0 +1,89 @@
+.experience-tours-page,
+.experience-tour-form-page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.experience-tours-page__header,
+.experience-tour-form-page__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.experience-tours-page__header h3,
+.experience-tour-form-page__header h3 {
+  margin: 0 0 4px;
+}
+
+.experience-tours-page__filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.experience-tours-page__no-image {
+  display: grid;
+  width: 64px;
+  height: 44px;
+  place-items: center;
+  border-radius: 6px;
+  background: #f0f2f5;
+  color: #8c8c8c;
+  font-size: 11px;
+}
+
+.experience-tour-form-page__form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.experience-tour-form-page__dynamic-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.experience-tour-form-page__dynamic-row:last-child {
+  border-bottom: 0;
+}
+
+.experience-tour-form-page__step-badge {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  place-items: center;
+  border-radius: 50%;
+  background: #1677ff;
+  color: #fff;
+  font-weight: 700;
+}
+
+.experience-tour-preview img {
+  max-height: 280px;
+  object-fit: cover;
+  border-radius: 10px;
+}
+
+@media (max-width: 768px) {
+  .experience-tours-page__header,
+  .experience-tour-form-page__header,
+  .experience-tour-form-page__dynamic-row {
+    flex-direction: column;
+  }
+
+  .experience-tours-page__filters .ant-input-search,
+  .experience-tours-page__filters .ant-select,
+  .experience-tour-form-page__dynamic-row > * {
+    width: 100% !important;
+  }
+}

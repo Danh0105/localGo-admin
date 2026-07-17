@@ -1,0 +1,58 @@
+.feedback-tickets-page,
+.feedback-ticket-detail-page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.feedback-tickets-page__header,
+.feedback-ticket-detail-page__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.feedback-tickets-page__header h3,
+.feedback-ticket-detail-page__header h3 {
+  margin: 0 0 4px;
+}
+
+.feedback-tickets-page__filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.feedback-ticket-detail-page__content {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.feedback-ticket-detail-page__field {
+  margin-bottom: 12px;
+}
+
+.feedback-ticket-detail-page__field-label {
+  display: block;
+  margin-bottom: 4px;
+  color: #8c8c8c;
+  font-size: 12px;
+}
+
+@media (max-width: 768px) {
+  .feedback-tickets-page__header,
+  .feedback-ticket-detail-page__header {
+    flex-direction: column;
+  }
+
+  .feedback-tickets-page__filters .ant-input-search,
+  .feedback-tickets-page__filters .ant-select,
+  .feedback-tickets-page__filters .ant-picker {
+    width: 100% !important;
+  }
+}

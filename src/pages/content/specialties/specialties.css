@@ -1,0 +1,100 @@
+.specialties-page,
+.specialty-form-page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.specialties-page__header,
+.specialty-form-page__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.specialties-page__header h3,
+.specialty-form-page__header h3 {
+  margin: 0 0 4px;
+}
+
+.specialties-page__filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.specialties-page__no-image {
+  display: grid;
+  width: 64px;
+  height: 44px;
+  place-items: center;
+  border-radius: 6px;
+  background: #f0f2f5;
+  color: #8c8c8c;
+  font-size: 11px;
+}
+
+.specialty-form-page__form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.specialty-form-page__dynamic-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.specialty-form-page__dynamic-row:last-child {
+  border-bottom: 0;
+}
+
+.specialty-preview img {
+  max-height: 280px;
+  object-fit: cover;
+  border-radius: 10px;
+}
+
+.about-image-upload {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.about-image-upload__preview,
+.about-image-upload__placeholder {
+  display: grid;
+  width: 160px;
+  height: 100px;
+  flex: 0 0 160px;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 8px;
+  background: #f0f2f5;
+  color: #8c8c8c;
+}
+
+@media (max-width: 768px) {
+  .specialties-page__header,
+  .specialty-form-page__header,
+  .specialty-form-page__dynamic-row {
+    flex-direction: column;
+  }
+
+  .specialties-page__filters .ant-input-search,
+  .specialties-page__filters .ant-select {
+    width: 100% !important;
+  }
+
+  .specialty-form-page__dynamic-row > * {
+    width: 100%;
+  }
+}

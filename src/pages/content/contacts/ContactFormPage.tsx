@@ -1,0 +1,330 @@
+import {
+  ArrowDownOutlined,
+  ArrowLeftOutlined,
+  ArrowUpOutlined,
+  DeleteOutlined,
+  EyeOutlined,
+  PlusOutlined,
+  ReloadOutlined,
+  SaveOutlined,
+} from '@ant-design/icons';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Alert, Button, Card, Col, Form, Input, InputNumber, Modal, Row, Select, Skeleton, Space, Switch, Typography, message } from 'antd';
+import type { JSX } from 'react';
+import { useEffect, useState } from 'react';
+import { Controller, useFieldArray, useForm } from 'react-hook-form';
+import { useNavigate, useParams } from 'react-router-dom';
+import { createContact, fetchContact, updateContact } from '../../../api/contacts';
+import { useAuthStore } from '../../../store/auth-store';
+import { useUnsavedChangesStore } from '../../../store/unsaved-changes-store';
+import { ApiError } from '../../../types/api';
+import { CONTACT_CATEGORIES } from '../../../types/contact';
+import { ImageUploadField } from '../about/ImageUploadField';
+import { describeContactError } from './contact-errors';
+import {
+  contactFormSchema,
+  contactFormToPayload,
+  contactToForm,
+  EMPTY_CONTACT_FORM,
+  type ContactFormValues,
+} from './contact.schema';
+import { ContactPreviewDrawer } from './ContactPreviewDrawer';
+import './contacts.css';
+
+export function ContactFormPage(): JSX.Element {
+  const { id } = useParams<{ id: string }>();
+  const isCreate = !id || id === 'new';
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const canManage = useAuthStore((state) => state.user?.role === 'ADMIN');
+  const setGlobalDirty = useUnsavedChangesStore((state) => state.setDirty);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [conflict, setConflict] = useState(false);
+
+  const itemQuery = useQuery({
+    queryKey: ['admin-contact-item', id],
+    queryFn: ({ signal }) => fetchContact(id!, signal),
+    enabled: !isCreate,
+  });
+
+  const {
+    control,
+    handleSubmit,
+    reset,
+    setValue,
+    watch,
+    formState: { errors, isDirty },
+  } = useForm<ContactFormValues>({
+    resolver: zodResolver(contactFormSchema),
+    defaultValues: EMPTY_CONTACT_FORM,
+  });
+
+  const descriptionItems = useFieldArray({ control, name: 'descriptionItems', keyName: 'fieldKey' });
+  const supportTopicItems = useFieldArray({ control, name: 'supportTopicItems', keyName: 'fieldKey' });
+  const values = watch();
+
+  useEffect(() => {
+    if (itemQuery.data) reset(contactToForm(itemQuery.data));
+  }, [itemQuery.data, reset]);
+
+  useEffect(() => {
+    setGlobalDirty(canManage && isDirty, 'Bạn có thay đổi chưa lưu ở Liên hệ. Rời khỏi trang sẽ mất các thay đổi này.');
+  }, [canManage, isDirty, setGlobalDirty]);
+
+  useEffect(() => () => useUnsavedChangesStore.getState().setDirty(false), []);
+
+  const saveMutation = useMutation({
+    mutationFn: (form: ContactFormValues) => {
+      const payload = contactFormToPayload(form);
+      return isCreate ? createContact(payload) : updateContact(id!, { ...payload, version: itemQuery.data!.version });
+    },
+    onSuccess: (saved) => {
+      reset(contactToForm(saved));
+      setConflict(false);
+      void queryClient.invalidateQueries({ queryKey: ['admin-contacts'] });
+      void queryClient.invalidateQueries({ queryKey: ['admin-contact-item', saved.id] });
+      message.success(isCreate ? 'Đã tạo liên hệ' : 'Đã lưu thay đổi');
+      navigate(`/content/contacts/${saved.id}`, { replace: true });
+    },
+    onError: (error: unknown) => {
+      if (error instanceof ApiError && error.status === 409 && error.code === 'CONTACT_VERSION_CONFLICT') {
+        setConflict(true);
+      }
+      message.error(describeContactError(error));
+    },
+  });
+
+  const disabled = !canManage || saveMutation.isPending;
+
+  function cancel(): void {
+    const leave = () => {
+      setGlobalDirty(false);
+      navigate('/content/contacts');
+    };
+    if (!isDirty || !canManage) return leave();
+    Modal.confirm({
+      title: 'Hủy thay đổi?',
+      content: 'Các nội dung chưa lưu sẽ bị mất.',
+      okText: 'Rời trang',
+      cancelText: 'Ở lại',
+      okButtonProps: { danger: true },
+      onOk: leave,
+    });
+  }
+
+  async function loadLatest(): Promise<void> {
+    const result = await itemQuery.refetch();
+    if (result.data) {
+      reset(contactToForm(result.data));
+      setConflict(false);
+      message.info('Đã tải phiên bản mới nhất');
+    }
+  }
+
+  if (isCreate && !canManage) {
+    return <Alert type="error" showIcon message="Bạn không có quyền tạo liên hệ" action={<Button onClick={() => navigate('/content/contacts')}>Về danh sách</Button>} />;
+  }
+  if (!isCreate && itemQuery.isLoading) return <Skeleton active paragraph={{ rows: 16 }} />;
+  if (!isCreate && itemQuery.isError) {
+    return (
+      <Alert
+        type="error"
+        showIcon
+        message="Không tải được liên hệ"
+        description={describeContactError(itemQuery.error)}
+        action={<Button icon={<ReloadOutlined />} onClick={() => void itemQuery.refetch()}>Thử lại</Button>}
+      />
+    );
+  }
+
+  return (
+    <div className="contact-form-page">
+      <div className="contact-form-page__header">
+        <div>
+          <Button type="text" htmlType="button" icon={<ArrowLeftOutlined />} onClick={cancel}>Danh sách</Button>
+          <Typography.Title level={3}>
+            {isCreate ? 'Thêm liên hệ mới' : `${canManage ? 'Chỉnh sửa' : 'Chi tiết'} ${itemQuery.data?.name ?? ''}`}
+          </Typography.Title>
+        </div>
+        <Space wrap>
+          <Controller name="isActive" control={control} render={({ field }) => (
+            <Space>
+              <Typography.Text>Hiển thị trên Mini App</Typography.Text>
+              <Switch checked={field.value} disabled={disabled} onChange={field.onChange} />
+            </Space>
+          )} />
+          <Button htmlType="button" icon={<EyeOutlined />} onClick={() => setPreviewOpen(true)}>Xem trước</Button>
+          <Button htmlType="button" onClick={cancel}>{canManage ? 'Hủy' : 'Đóng'}</Button>
+          {canManage && (
+            <Button
+              type="primary"
+              htmlType="button"
+              icon={<SaveOutlined />}
+              loading={saveMutation.isPending}
+              disabled={conflict || saveMutation.isPending || (!isCreate && !isDirty)}
+              onClick={() => void handleSubmit((form) => saveMutation.mutate(form))()}
+            >
+              Lưu
+            </Button>
+          )}
+        </Space>
+      </div>
+
+      {!canManage && <Alert type="info" showIcon message="Bạn đang xem ở chế độ chỉ đọc" />}
+      {conflict && (
+        <Alert
+          type="warning"
+          showIcon
+          message="Dữ liệu đã được người khác cập nhật"
+          description="Nội dung bạn đang nhập vẫn được giữ trên form. Hãy tải phiên bản mới nhất trước khi tiếp tục lưu."
+          action={<Button size="small" onClick={() => void loadLatest()}>Tải phiên bản mới nhất</Button>}
+        />
+      )}
+
+      <form className="contact-form-page__form" onSubmit={(event) => event.preventDefault()}>
+        <Card title="Thông tin cơ bản">
+          <Row gutter={16}>
+            <Col xs={24} lg={16}>
+              <Controller name="name" control={control} render={({ field }) => (
+                <Form.Item label="Tên liên hệ" required validateStatus={errors.name ? 'error' : undefined} help={errors.name?.message}>
+                  <Input {...field} disabled={disabled} maxLength={150} showCount />
+                </Form.Item>
+              )} />
+            </Col>
+            <Col xs={24} lg={8}>
+              <Controller name="category" control={control} render={({ field }) => (
+                <Form.Item label="Danh mục" required validateStatus={errors.category ? 'error' : undefined} help={errors.category?.message}>
+                  <Select {...field} disabled={disabled} options={CONTACT_CATEGORIES.map((value) => ({ value, label: value }))} />
+                </Form.Item>
+              )} />
+            </Col>
+          </Row>
+          <Controller name="role" control={control} render={({ field }) => (
+            <Form.Item label="Vai trò / chức năng" required validateStatus={errors.role ? 'error' : undefined} help={errors.role?.message}>
+              <Input {...field} disabled={disabled} maxLength={255} showCount />
+            </Form.Item>
+          )} />
+          <Row gutter={16}>
+            <Col xs={24} lg={8}>
+              <Controller name="phone" control={control} render={({ field }) => (
+                <Form.Item label="Số điện thoại" required validateStatus={errors.phone ? 'error' : undefined} help={errors.phone?.message}>
+                  <Input {...field} type="tel" disabled={disabled} maxLength={30} showCount />
+                </Form.Item>
+              )} />
+            </Col>
+            <Col xs={24} lg={8}>
+              <Controller name="email" control={control} render={({ field }) => (
+                <Form.Item label="Email" validateStatus={errors.email ? 'error' : undefined} help={errors.email?.message}>
+                  <Input {...field} type="email" disabled={disabled} maxLength={255} showCount />
+                </Form.Item>
+              )} />
+            </Col>
+            <Col xs={24} lg={8}>
+              <Controller name="sortOrder" control={control} render={({ field }) => (
+                <Form.Item label="Thứ tự hiển thị">
+                  <InputNumber {...field} disabled={disabled} min={0} precision={0} style={{ width: '100%' }} />
+                </Form.Item>
+              )} />
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col xs={24} lg={12}>
+              <Controller name="address" control={control} render={({ field }) => (
+                <Form.Item label="Địa chỉ" required validateStatus={errors.address ? 'error' : undefined} help={errors.address?.message}>
+                  <Input {...field} disabled={disabled} maxLength={255} showCount />
+                </Form.Item>
+              )} />
+            </Col>
+            <Col xs={24} lg={12}>
+              <Controller name="workingTime" control={control} render={({ field }) => (
+                <Form.Item label="Giờ làm việc" required validateStatus={errors.workingTime ? 'error' : undefined} help={errors.workingTime?.message}>
+                  <Input {...field} disabled={disabled} maxLength={150} showCount />
+                </Form.Item>
+              )} />
+            </Col>
+          </Row>
+          <Controller name="summary" control={control} render={({ field }) => (
+            <Form.Item label="Mô tả ngắn" required validateStatus={errors.summary ? 'error' : undefined} help={errors.summary?.message}>
+              <Input.TextArea {...field} disabled={disabled} rows={3} maxLength={300} showCount />
+            </Form.Item>
+          )} />
+        </Card>
+
+        <Card title="Ảnh đại diện">
+          <ImageUploadField
+            label="Ảnh đại diện"
+            imageUrl={values.imageUrl ?? undefined}
+            alt={values.imageAlt}
+            disabled={disabled}
+            errorMessage={errors.imageUrl?.message}
+            errorId="contact-image-error"
+            hint="JPEG, PNG hoặc WebP; form chỉ gửi mediaId sau khi upload."
+            onUploaded={({ mediaId, imageUrl }) => {
+              setValue('mediaId', mediaId, { shouldDirty: true, shouldValidate: true });
+              setValue('imageUrl', imageUrl, { shouldDirty: true, shouldValidate: true });
+            }}
+            onRemove={() => {
+              setValue('mediaId', null, { shouldDirty: true, shouldValidate: true });
+              setValue('imageUrl', null, { shouldDirty: true, shouldValidate: true });
+            }}
+          />
+          <Controller name="imageAlt" control={control} render={({ field }) => (
+            <Form.Item label="Mô tả ảnh" validateStatus={errors.imageAlt ? 'error' : undefined} help={errors.imageAlt?.message}>
+              <Input {...field} disabled={disabled} maxLength={150} showCount />
+            </Form.Item>
+          )} />
+        </Card>
+
+        <Card title="Mô tả chi tiết" extra={canManage && <Button htmlType="button" icon={<PlusOutlined />} disabled={descriptionItems.fields.length >= 20 || disabled} onClick={() => descriptionItems.append({ text: '' })}>Thêm đoạn</Button>}>
+          {descriptionItems.fields.map((item, index) => (
+            <div className="contact-form-page__dynamic-row" key={item.fieldKey}>
+              <Controller name={`descriptionItems.${index}.text`} control={control} render={({ field }) => (
+                <Form.Item label={`Đoạn ${index + 1}`} validateStatus={errors.descriptionItems?.[index]?.text ? 'error' : undefined} help={errors.descriptionItems?.[index]?.text?.message} style={{ flex: 1 }}>
+                  <Input.TextArea {...field} disabled={disabled} rows={4} maxLength={5000} showCount />
+                </Form.Item>
+              )} />
+              {canManage && (
+                <Space orientation="vertical">
+                  <Button htmlType="button" icon={<ArrowUpOutlined />} aria-label="Đưa đoạn lên" disabled={index === 0 || disabled} onClick={() => descriptionItems.move(index, index - 1)} />
+                  <Button htmlType="button" icon={<ArrowDownOutlined />} aria-label="Đưa đoạn xuống" disabled={index === descriptionItems.fields.length - 1 || disabled} onClick={() => descriptionItems.move(index, index + 1)} />
+                  <Button htmlType="button" danger icon={<DeleteOutlined />} aria-label="Xóa đoạn" disabled={descriptionItems.fields.length === 1 || disabled} onClick={() => descriptionItems.remove(index)} />
+                </Space>
+              )}
+            </div>
+          ))}
+        </Card>
+
+        <Card title="Nội dung hỗ trợ" extra={canManage && <Button htmlType="button" icon={<PlusOutlined />} disabled={supportTopicItems.fields.length >= 20 || disabled} onClick={() => supportTopicItems.append({ text: '' })}>Thêm nội dung</Button>}>
+          {!supportTopicItems.fields.length && <Typography.Text type="secondary">Chưa có nội dung hỗ trợ.</Typography.Text>}
+          {supportTopicItems.fields.map((item, index) => (
+            <div className="contact-form-page__dynamic-row" key={item.fieldKey}>
+              <Controller name={`supportTopicItems.${index}.text`} control={control} render={({ field }) => (
+                <Form.Item label={`Nội dung ${index + 1}`} validateStatus={errors.supportTopicItems?.[index]?.text ? 'error' : undefined} help={errors.supportTopicItems?.[index]?.text?.message} style={{ flex: 1 }}>
+                  <Input {...field} disabled={disabled} maxLength={200} showCount />
+                </Form.Item>
+              )} />
+              {canManage && (
+                <Space>
+                  <Button htmlType="button" icon={<ArrowUpOutlined />} aria-label="Đưa nội dung hỗ trợ lên" disabled={index === 0 || disabled} onClick={() => supportTopicItems.move(index, index - 1)} />
+                  <Button htmlType="button" icon={<ArrowDownOutlined />} aria-label="Đưa nội dung hỗ trợ xuống" disabled={index === supportTopicItems.fields.length - 1 || disabled} onClick={() => supportTopicItems.move(index, index + 1)} />
+                  <Button htmlType="button" danger icon={<DeleteOutlined />} aria-label="Xóa nội dung hỗ trợ" disabled={disabled} onClick={() => supportTopicItems.remove(index)} />
+                </Space>
+              )}
+            </div>
+          ))}
+        </Card>
+
+        <Card title="Lưu ý">
+          <Controller name="note" control={control} render={({ field }) => (
+            <Form.Item validateStatus={errors.note ? 'error' : undefined} help={errors.note?.message}>
+              <Input.TextArea {...field} disabled={disabled} rows={5} maxLength={2000} showCount />
+            </Form.Item>
+          )} />
+        </Card>
+      </form>
+
+      <ContactPreviewDrawer open={previewOpen} values={values} onClose={() => setPreviewOpen(false)} />
+    </div>
+  );
+}

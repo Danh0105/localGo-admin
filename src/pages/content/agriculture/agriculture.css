@@ -1,0 +1,60 @@
+.agriculture-page,
+.agriculture-form-page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.agriculture-page__header,
+.agriculture-form-page__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.agriculture-page__header h3,
+.agriculture-form-page__header h3 { margin: 0 0 4px; }
+
+.agriculture-page__filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.agriculture-page__no-image {
+  display: grid;
+  width: 64px;
+  height: 44px;
+  place-items: center;
+  border-radius: 6px;
+  background: #f0f2f5;
+  color: #8c8c8c;
+  font-size: 11px;
+}
+
+.agriculture-form-page__form { display: flex; flex-direction: column; gap: 20px; }
+
+.agriculture-form-page__dynamic-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.agriculture-form-page__dynamic-row:last-child { border-bottom: 0; }
+.agriculture-preview img { max-height: 280px; object-fit: cover; border-radius: 10px; }
+
+@media (max-width: 768px) {
+  .agriculture-page__header,
+  .agriculture-form-page__header,
+  .agriculture-form-page__dynamic-row { flex-direction: column; }
+
+  .agriculture-page__filters .ant-input-search,
+  .agriculture-page__filters .ant-select,
+  .agriculture-form-page__dynamic-row > * { width: 100% !important; }
+}
