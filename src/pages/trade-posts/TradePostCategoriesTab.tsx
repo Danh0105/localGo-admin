@@ -1,150 +1,232 @@
-import { PlusOutlined } from '@ant-design/icons';
+import { PlusOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Button, Popconfirm, Space, Table, Tag, Typography, message } from 'antd';
+import { Alert, Button, Input, Select, Space, Table, Tag, Typography, message } from 'antd';
+import type { ColumnsType } from 'antd/es/table';
 import type { JSX } from 'react';
 import { useState } from 'react';
-import { createCategory, deleteCategory, fetchCategoriesByDomain, updateCategory } from '../../api/categories';
+import {
+  createTradePostCategory,
+  fetchAdminTradePostCategories,
+} from '../../api/trade-post-categories';
 import { ApiError } from '../../types/api';
-import type { Category } from '../../types/category';
-import { CategoryFormModal, type CategoryFormValues } from '../categories/CategoryFormModal';
+import type {
+  TradePostCategoryAdminItem,
+  TradePostCategoryAdminQuery,
+} from '../../types/trade-post-category';
+import { TradePostCategoryFormModal } from './TradePostCategoryFormModal';
 
-const DOMAIN = 'TRADE_POST' as const;
+const STATUS_OPTIONS = [
+  { value: 'true', label: 'Đang hoạt động' },
+  { value: 'false', label: 'Ngừng hoạt động' },
+];
+
+function formatDate(value: string): string {
+  return new Date(value).toLocaleString('vi-VN');
+}
+
+function describeError(error: unknown): string {
+  return error instanceof ApiError ? error.message : 'Vui lòng kiểm tra kết nối và thử lại.';
+}
 
 export function TradePostCategoriesTab(): JSX.Element {
   const queryClient = useQueryClient();
-  const [editing, setEditing] = useState<Category | null>(null);
-  const [modalOpen, setModalOpen] = useState(false);
+  const [searchDraft, setSearchDraft] = useState('');
+  const [query, setQuery] = useState<TradePostCategoryAdminQuery>({ page: 1, limit: 20 });
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createError, setCreateError] = useState<unknown>();
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['admin-categories', DOMAIN],
-    queryFn: () => fetchCategoriesByDomain(DOMAIN),
+  const categoriesQuery = useQuery({
+    queryKey: ['admin-trade-post-categories', query],
+    queryFn: ({ signal }) => fetchAdminTradePostCategories(query, signal),
+    placeholderData: (previous) => previous,
   });
 
-  function invalidate(): void {
-    void queryClient.invalidateQueries({ queryKey: ['admin-categories', DOMAIN] });
-  }
+  const refresh = (): void => {
+    void queryClient.invalidateQueries({ queryKey: ['admin-trade-post-categories'] });
+  };
 
   const createMutation = useMutation({
-    mutationFn: createCategory,
+    mutationFn: createTradePostCategory,
     onSuccess: () => {
-      message.success('Đã tạo danh mục');
-      setModalOpen(false);
-      invalidate();
+      message.success('Đã tạo danh mục tin giao thương');
+      setCreateOpen(false);
+      setCreateError(undefined);
+      refresh();
     },
     onError: (error: unknown) => {
-      message.error(error instanceof ApiError ? error.message : 'Tạo danh mục thất bại');
+      setCreateError(error);
     },
   });
 
-  const updateMutation = useMutation({
-    mutationFn: ({ id, values }: { id: string; values: CategoryFormValues }) => updateCategory(id, values),
-    onSuccess: () => {
-      message.success('Đã cập nhật danh mục');
-      setModalOpen(false);
-      setEditing(null);
-      invalidate();
-    },
-    onError: (error: unknown) => {
-      message.error(error instanceof ApiError ? error.message : 'Cập nhật thất bại');
-    },
-  });
+  const openCreate = (): void => {
+    setCreateError(undefined);
+    setCreateOpen(true);
+  };
 
-  const deleteMutation = useMutation({
-    mutationFn: deleteCategory,
-    onSuccess: () => {
-      message.success('Đã xóa (vô hiệu hóa) danh mục');
-      invalidate();
-    },
-    onError: (error: unknown) => {
-      message.error(error instanceof ApiError ? error.message : 'Xóa thất bại');
-    },
-  });
+  const closeCreate = (): void => {
+    if (createMutation.isPending) return;
+    setCreateOpen(false);
+    setCreateError(undefined);
+  };
 
-  function handleSubmit(values: CategoryFormValues): void {
-    if (editing) {
-      updateMutation.mutate({ id: editing.id, values });
-    } else {
-      createMutation.mutate(values);
-    }
+  const columns: ColumnsType<TradePostCategoryAdminItem> = [
+    {
+      title: 'Danh mục',
+      key: 'category',
+      width: 260,
+      render: (_, item) => (
+        <div className="trade-category-cell">
+          <Typography.Text strong>{item.name}</Typography.Text>
+          <Typography.Text code>{item.code}</Typography.Text>
+        </div>
+      ),
+    },
+    {
+      title: 'Mô tả',
+      dataIndex: 'description',
+      key: 'description',
+      ellipsis: true,
+      render: (description: string | null) => description || <Typography.Text type="secondary">—</Typography.Text>,
+    },
+    {
+      title: 'Thứ tự',
+      dataIndex: 'sortOrder',
+      key: 'sortOrder',
+      width: 90,
+      align: 'center',
+    },
+    {
+      title: 'Chi tiết khuyến mãi',
+      dataIndex: 'requiresPromotionDetails',
+      key: 'requiresPromotionDetails',
+      width: 175,
+      align: 'center',
+      render: (required: boolean) => (
+        <Tag color={required ? 'purple' : 'default'}>{required ? 'Bắt buộc' : 'Không yêu cầu'}</Tag>
+      ),
+    },
+    {
+      title: 'Số tin',
+      dataIndex: 'postCount',
+      key: 'postCount',
+      width: 95,
+      align: 'right',
+      render: (postCount: number) => postCount.toLocaleString('vi-VN'),
+    },
+    {
+      title: 'Trạng thái',
+      key: 'status',
+      width: 150,
+      render: (_, item) => {
+        if (item.deletedAt) return <Tag color="red">Đã xóa</Tag>;
+        return (
+          <Tag color={item.isActive ? 'green' : 'default'}>
+            {item.isActive ? 'Đang hoạt động' : 'Ngừng hoạt động'}
+          </Tag>
+        );
+      },
+    },
+    {
+      title: 'Cập nhật lúc',
+      dataIndex: 'updatedAt',
+      key: 'updatedAt',
+      width: 170,
+      render: formatDate,
+    },
+  ];
+
+  if (categoriesQuery.isError) {
+    return (
+      <Alert
+        type="error"
+        showIcon
+        title="Không tải được danh mục tin giao thương"
+        description={describeError(categoriesQuery.error)}
+        action={(
+          <Button size="small" icon={<ReloadOutlined />} onClick={() => void categoriesQuery.refetch()}>
+            Thử lại
+          </Button>
+        )}
+      />
+    );
   }
 
   return (
-    <div>
-      <Typography.Paragraph type="secondary">
-        Quản lý danh mục dùng để phân loại tin giao thương trên LocalGo.
-      </Typography.Paragraph>
+    <div className="trade-categories-tab">
+      <div className="trade-categories-tab__summary">
+        <div>
+          <Typography.Title level={4}>Danh mục tin giao thương</Typography.Title>
+          <Typography.Text type="secondary">
+            Tổng cộng {categoriesQuery.data?.meta.total ?? 0} danh mục, bao gồm cả đang ngừng hoạt động.
+          </Typography.Text>
+        </div>
+        <Space wrap>
+          <Button icon={<ReloadOutlined />} onClick={refresh}>Làm mới</Button>
+          <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+            Tạo danh mục
+          </Button>
+        </Space>
+      </div>
 
-      <Space style={{ marginBottom: 16 }}>
-        <Button
-          type="primary"
-          icon={<PlusOutlined />}
-          onClick={() => {
-            setEditing(null);
-            setModalOpen(true);
+      <div className="trade-categories-tab__filters">
+        <Input.Search
+          allowClear
+          prefix={<SearchOutlined />}
+          placeholder="Tìm theo mã hoặc tên danh mục"
+          value={searchDraft}
+          onChange={(event) => {
+            const value = event.target.value;
+            setSearchDraft(value);
+            if (!value && query.search) {
+              setQuery((current) => ({ ...current, page: 1, search: undefined }));
+            }
           }}
-        >
-          Tạo danh mục
-        </Button>
-      </Space>
+          onSearch={(search) => setQuery((current) => ({
+            ...current,
+            page: 1,
+            search: search.trim() || undefined,
+          }))}
+        />
+        <Select
+          allowClear
+          placeholder="Tất cả trạng thái"
+          options={STATUS_OPTIONS}
+          value={query.isActive === undefined ? undefined : String(query.isActive)}
+          onChange={(value?: string) => setQuery((current) => ({
+            ...current,
+            page: 1,
+            isActive: value === undefined ? undefined : value === 'true',
+          }))}
+        />
+      </div>
 
-      <Table<Category>
+      <Table<TradePostCategoryAdminItem>
         rowKey="id"
-        loading={isLoading}
-        dataSource={data}
-        pagination={false}
-        columns={[
-          { title: 'Tên', dataIndex: 'name', key: 'name' },
-          { title: 'Slug', dataIndex: 'slug', key: 'slug' },
-          { title: 'Thứ tự', dataIndex: 'sortOrder', key: 'sortOrder' },
-          {
-            title: 'Trạng thái',
-            dataIndex: 'isActive',
-            key: 'isActive',
-            render: (isActive: boolean) => (
-              <Tag color={isActive ? 'green' : 'default'}>
-                {isActive ? 'Đang hoạt động' : 'Đã vô hiệu hóa'}
-              </Tag>
-            ),
-          },
-          {
-            title: 'Thao tác',
-            key: 'actions',
-            render: (_, record) => (
-              <Space>
-                <Button
-                  size="small"
-                  onClick={() => {
-                    setEditing(record);
-                    setModalOpen(true);
-                  }}
-                >
-                  Sửa
-                </Button>
-                <Popconfirm
-                  title="Xóa (vô hiệu hóa) danh mục này?"
-                  onConfirm={() => deleteMutation.mutate(record.id)}
-                >
-                  <Button size="small" danger loading={deleteMutation.isPending}>
-                    Xóa
-                  </Button>
-                </Popconfirm>
-              </Space>
-            ),
-          },
-        ]}
+        columns={columns}
+        dataSource={categoriesQuery.data?.data ?? []}
+        loading={categoriesQuery.isLoading || categoriesQuery.isFetching}
+        scroll={{ x: 1100 }}
+        className="trade-moderation-table"
+        locale={{ emptyText: 'Chưa có danh mục tin giao thương phù hợp' }}
+        pagination={{
+          current: query.page,
+          pageSize: query.limit,
+          total: categoriesQuery.data?.meta.total ?? 0,
+          showSizeChanger: true,
+          showTotal: (total) => `${total} danh mục`,
+          onChange: (page, limit) => setQuery((current) => ({ ...current, page, limit })),
+        }}
       />
 
-      <CategoryFormModal
-        open={modalOpen}
-        initialValues={editing}
-        defaultDomain={DOMAIN}
-        lockDomain
-        confirmLoading={createMutation.isPending || updateMutation.isPending}
-        onCancel={() => {
-          setModalOpen(false);
-          setEditing(null);
+      <TradePostCategoryFormModal
+        open={createOpen}
+        confirmLoading={createMutation.isPending}
+        serverError={createError}
+        onCancel={closeCreate}
+        onSubmit={(input) => {
+          setCreateError(undefined);
+          createMutation.mutate(input);
         }}
-        onSubmit={handleSubmit}
       />
     </div>
   );
