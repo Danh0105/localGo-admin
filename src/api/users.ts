@@ -1,6 +1,6 @@
 import type { Paginated } from '../types/api';
 import type {
-  ApproveBusinessApplicationInput,
+  ApproveBusinessApplicationResult,
   BusinessApplication,
   BusinessApplicationAdminQuery,
 } from '../types/business-application';
@@ -33,12 +33,10 @@ export function fetchBusinessApplications(
   return unwrapPaginated(apiClient.get('/admin/business-applications', { params: query }));
 }
 
-export function approveBusinessApplication(
-  id: string,
-  input: ApproveBusinessApplicationInput,
-): Promise<BusinessApplication> {
-  if (useMockData) return approveMockBusinessApplication(id, input);
-  return unwrap(apiClient.post(`/admin/business-applications/${id}/approve`, input));
+export function approveBusinessApplication(id: string): Promise<ApproveBusinessApplicationResult> {
+  if (useMockData) return approveMockBusinessApplication(id);
+  // Backend lấy tên/email từ hồ sơ và tự sinh mật khẩu; body chỉ nhận `documents` tùy chọn.
+  return unwrap(apiClient.post(`/admin/business-applications/${id}/approve`, {}));
 }
 
 export function rejectBusinessApplication(

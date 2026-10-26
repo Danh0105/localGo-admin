@@ -1,7 +1,7 @@
 import type { Paginated } from '../types/api';
 import { ApiError } from '../types/api';
 import type {
-  ApproveBusinessApplicationInput,
+  ApproveBusinessApplicationResult,
   BusinessApplication,
   BusinessApplicationAdminQuery,
 } from '../types/business-application';
@@ -370,8 +370,7 @@ export async function getMockBusinessApplications(
 
 export async function approveMockBusinessApplication(
   id: string,
-  input: ApproveBusinessApplicationInput,
-): Promise<BusinessApplication> {
+): Promise<ApproveBusinessApplicationResult> {
   const index = mockApplications.findIndex((application) => application.id === id);
   if (index < 0) {
     throw new ApiError({ code: 'APPLICATION_NOT_FOUND', message: 'Không tìm thấy hồ sơ' });
@@ -379,7 +378,8 @@ export async function approveMockBusinessApplication(
   if (mockApplications[index].status !== 'PENDING') {
     throw new ApiError({ code: 'APPLICATION_ALREADY_REVIEWED', message: 'Hồ sơ đã được xử lý' });
   }
-  if (mockUsers.some((user) => user.email?.toLowerCase() === input.email.toLowerCase())) {
+  const email = mockApplications[index].contactEmail.trim().toLowerCase();
+  if (mockUsers.some((user) => user.email?.toLowerCase() === email)) {
     throw new ApiError({ code: 'EMAIL_ALREADY_EXISTS', message: 'Email đã được sử dụng' });
   }
 
@@ -388,8 +388,8 @@ export async function approveMockBusinessApplication(
     id: `mock-user-${Date.now()}`,
     zaloId: null,
     phone: mockApplications[index].contactPhone,
-    email: input.email,
-    displayName: input.displayName,
+    email,
+    displayName: mockApplications[index].contactName,
     avatarUrl: null,
     role: 'BUSINESS',
     status: 'ACTIVE',
@@ -407,7 +407,7 @@ export async function approveMockBusinessApplication(
     createdUserId: createdUser.id,
     updatedAt: now,
   };
-  return withDelay(structuredClone(mockApplications[index]));
+  return withDelay({ ...structuredClone(mockApplications[index]), initialPassword: 'MockPass#2026' });
 }
 
 export async function rejectMockBusinessApplication(

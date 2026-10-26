@@ -19,7 +19,6 @@ import {
   Descriptions,
   Drawer,
   Empty,
-  Form,
   Input,
   Modal,
   Popconfirm,
@@ -48,7 +47,7 @@ import {
   BUSINESS_APPLICATION_STATUS_LABEL,
   BUSINESS_APPLICANT_TYPE_LABEL,
   BUSINESS_DOCUMENT_TYPE_LABEL,
-  type ApproveBusinessApplicationInput,
+  type ApproveBusinessApplicationResult,
   type BusinessApplicantType,
   type BusinessApplication,
   type BusinessApplicationStatus,
@@ -84,13 +83,6 @@ function getInitials(name: string): string {
     .slice(-2)
     .map((part) => part.charAt(0).toUpperCase())
     .join('');
-}
-
-function generateInitialPassword(): string {
-  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$';
-  const bytes = new Uint32Array(12);
-  crypto.getRandomValues(bytes);
-  return Array.from(bytes, (value) => alphabet[value % alphabet.length]).join('');
 }
 
 function showMutationError(error: unknown): void {
@@ -374,7 +366,6 @@ function ApplicationDetail({
 
 function BusinessApplicationsTable(): JSX.Element {
   const queryClient = useQueryClient();
-  const [approveForm] = Form.useForm<ApproveBusinessApplicationInput>();
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(20);
   const [status, setStatus] = useState<BusinessApplicationStatus>();
@@ -384,6 +375,7 @@ function BusinessApplicationsTable(): JSX.Element {
   const [approveTarget, setApproveTarget] = useState<BusinessApplication | null>(null);
   const [rejectTarget, setRejectTarget] = useState<BusinessApplication | null>(null);
   const [rejectReason, setRejectReason] = useState('');
+  const [approvalResult, setApprovalResult] = useState<ApproveBusinessApplicationResult | null>(null);
 
   const { data, isLoading, isFetching } = useQuery({
     queryKey: ['admin-business-applications', { page, limit, status, applicantType, search }],
@@ -399,20 +391,14 @@ function BusinessApplicationsTable(): JSX.Element {
   function openApprove(application: BusinessApplication): void {
     setDetail(null);
     setApproveTarget(application);
-    approveForm.setFieldsValue({
-      displayName: application.businessName,
-      email: application.contactEmail,
-      initialPassword: generateInitialPassword(),
-    });
   }
 
   const approveMutation = useMutation({
-    mutationFn: ({ id, input }: { id: string; input: ApproveBusinessApplicationInput }) =>
-      approveBusinessApplication(id, input),
-    onSuccess: () => {
+    mutationFn: (id: string) => approveBusinessApplication(id),
+    onSuccess: (result) => {
       message.success('Đã duyệt hồ sơ và tạo tài khoản BUSINESS');
       setApproveTarget(null);
-      approveForm.resetFields();
+      setApprovalResult(result);
       invalidate();
     },
     onError: showMutationError,
@@ -583,48 +569,57 @@ function BusinessApplicationsTable(): JSX.Element {
         okText="Duyệt và tạo tài khoản"
         cancelText="Hủy"
         confirmLoading={approveMutation.isPending}
-        onCancel={() => {
-          setApproveTarget(null);
-          approveForm.resetFields();
+        onCancel={() => setApproveTarget(null)}
+        onOk={() => {
+          if (approveTarget) approveMutation.mutate(approveTarget.id);
         }}
-        onOk={() => void approveForm.validateFields().then((input) => {
-          if (approveTarget) approveMutation.mutate({ id: approveTarget.id, input });
-        })}
       >
         <div className="approval-note">
           <CheckCircleOutlined />
-          <span>Hồ sơ được duyệt sẽ tạo một người dùng có vai trò <strong>BUSINESS</strong>.</span>
+          <span>
+            Hồ sơ được duyệt sẽ tạo một người dùng có vai trò <strong>BUSINESS</strong> từ thông tin
+            liên hệ trong hồ sơ. Hệ thống tự sinh mật khẩu tạm thời và chỉ hiển thị một lần sau khi duyệt.
+          </span>
         </div>
-        <Form form={approveForm} layout="vertical" requiredMark={false}>
-          <Form.Item
-            name="displayName"
-            label="Tên hiển thị"
-            rules={[{ required: true, message: 'Vui lòng nhập tên hiển thị' }]}
-          >
-            <Input prefix={<UserOutlined />} placeholder="Tên Business" />
-          </Form.Item>
-          <Form.Item
-            name="email"
-            label="Email đăng nhập"
-            rules={[
-              { required: true, message: 'Vui lòng nhập email' },
-              { type: 'email', message: 'Email không hợp lệ' },
-            ]}
-          >
-            <Input placeholder="business@example.com" />
-          </Form.Item>
-          <Form.Item
-            name="initialPassword"
-            label="Mật khẩu tạm thời"
-            extra="Gửi thông tin này cho chủ hồ sơ qua kênh bảo mật."
-            rules={[
-              { required: true, message: 'Vui lòng nhập mật khẩu tạm thời' },
-              { min: 8, message: 'Mật khẩu tối thiểu 8 ký tự' },
-            ]}
-          >
-            <Input.Password prefix={<LockOutlined />} placeholder="Mật khẩu tạm thời" />
-          </Form.Item>
-        </Form>
+        {approveTarget && (
+          <Descriptions column={1} size="small" bordered>
+            <Descriptions.Item label={<><UserOutlined /> Người liên hệ</>}>
+              {approveTarget.contactName}
+            </Descriptions.Item>
+            <Descriptions.Item label="Email đăng nhập">{approveTarget.contactEmail}</Descriptions.Item>
+            <Descriptions.Item label="Số điện thoại">{approveTarget.contactPhone}</Descriptions.Item>
+          </Descriptions>
+        )}
+      </Modal>
+
+      <Modal
+        title="Tài khoản BUSINESS đã sẵn sàng"
+        open={!!approvalResult}
+        okText="Đã lưu thông tin"
+        cancelButtonProps={{ style: { display: 'none' } }}
+        closable={false}
+        maskClosable={false}
+        onOk={() => setApprovalResult(null)}
+      >
+        {approvalResult && (
+          <Descriptions column={1} size="small" bordered>
+            <Descriptions.Item label="Email đăng nhập">{approvalResult.contactEmail}</Descriptions.Item>
+            <Descriptions.Item label={<><LockOutlined /> Mật khẩu tạm thời</>}>
+              {approvalResult.initialPassword ? (
+                <Typography.Text code copyable>{approvalResult.initialPassword}</Typography.Text>
+              ) : (
+                <Typography.Text type="secondary">
+                  Tài khoản đã có mật khẩu, không cấp mật khẩu mới.
+                </Typography.Text>
+              )}
+            </Descriptions.Item>
+          </Descriptions>
+        )}
+        {approvalResult?.initialPassword && (
+          <Typography.Paragraph type="secondary" style={{ marginTop: 12, marginBottom: 0 }}>
+            Mật khẩu chỉ hiển thị một lần. Gửi cho chủ hồ sơ qua kênh bảo mật.
+          </Typography.Paragraph>
+        )}
       </Modal>
 
       <Modal

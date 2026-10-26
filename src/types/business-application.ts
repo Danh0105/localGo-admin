@@ -45,10 +45,9 @@ export interface BusinessApplicationAdminQuery {
   search?: string;
 }
 
-export interface ApproveBusinessApplicationInput {
-  displayName: string;
-  email: string;
-  initialPassword: string;
+export interface ApproveBusinessApplicationResult extends BusinessApplication {
+  /** Mật khẩu do backend sinh, chỉ trả một lần; null nếu tài khoản đã có mật khẩu. */
+  initialPassword: string | null;
 }
 
 export const BUSINESS_APPLICANT_TYPE_LABEL: Record<BusinessApplicantType, string> = {
