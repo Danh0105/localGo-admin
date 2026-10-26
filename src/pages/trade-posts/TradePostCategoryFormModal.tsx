@@ -1,40 +1,52 @@
-import { zodResolver } from '@hookform/resolvers/zod';
-import { Alert, Col, Form, Input, InputNumber, Modal, Row, Switch } from 'antd';
-import type { JSX } from 'react';
-import { useEffect } from 'react';
-import { Controller, useForm } from 'react-hook-form';
-import { z } from 'zod';
-import { ApiError } from '../../types/api';
-import type { CreateTradePostCategoryInput } from '../../types/trade-post-category';
-import { getApiFieldError } from '../../utils/api-field-error';
+import { zodResolver } from "@hookform/resolvers/zod";
+import {
+  Alert,
+  Col,
+  Form,
+  Input,
+  InputNumber,
+  Modal,
+  Row,
+  Switch,
+  Typography,
+} from "antd";
+import type { JSX } from "react";
+import { useEffect } from "react";
+import { Controller, useForm } from "react-hook-form";
+import { z } from "zod";
+import { ApiError } from "../../types/api";
+import type {
+  CreateTradePostCategoryInput,
+  UpdateTradePostCategoryInput,
+} from "../../types/trade-post-category";
+import { getApiFieldError } from "../../utils/api-field-error";
 
 const tradePostCategoryFormSchema = z.object({
-  code: z
-    .string()
-    .trim()
-    .min(1, 'Vui lòng nhập mã danh mục')
-    .max(50, 'Mã danh mục không được vượt quá 50 ký tự')
-    .regex(
-      /^[a-z0-9]+(?:-[a-z0-9]+)*$/,
-      'Chỉ chữ thường, số và dấu gạch ngang',
-    ),
   name: z
     .string()
     .trim()
-    .min(1, 'Vui lòng nhập tên danh mục')
-    .max(120, 'Tên danh mục không được vượt quá 120 ký tự'),
-  description: z.string().trim().max(1000, 'Mô tả không được vượt quá 1.000 ký tự'),
-  sortOrder: z.number().int('Thứ tự phải là số nguyên').min(0, 'Thứ tự không được nhỏ hơn 0'),
+    .min(1, "Vui lòng nhập tên danh mục")
+    .max(120, "Tên danh mục không được vượt quá 120 ký tự"),
+  description: z
+    .string()
+    .trim()
+    .max(1000, "Mô tả không được vượt quá 1.000 ký tự")
+    .or(z.literal("")),
+  sortOrder: z
+    .number()
+    .int("Thứ tự phải là số nguyên")
+    .min(0, "Thứ tự không được nhỏ hơn 0"),
   requiresPromotionDetails: z.boolean(),
   isActive: z.boolean(),
 });
 
-export type TradePostCategoryFormValues = z.infer<typeof tradePostCategoryFormSchema>;
+export type TradePostCategoryFormValues = z.infer<
+  typeof tradePostCategoryFormSchema
+>;
 
 const DEFAULT_VALUES: TradePostCategoryFormValues = {
-  code: '',
-  name: '',
-  description: '',
+  name: "",
+  description: "",
   sortOrder: 0,
   requiresPromotionDetails: false,
   isActive: true,
@@ -42,27 +54,41 @@ const DEFAULT_VALUES: TradePostCategoryFormValues = {
 
 interface Props {
   open: boolean;
+  mode: "create" | "edit";
+  initialValues?: Partial<TradePostCategoryFormValues> & {
+    slug?: string;
+    version?: number;
+  };
   confirmLoading: boolean;
   serverError?: unknown;
   onCancel: () => void;
-  onSubmit: (input: CreateTradePostCategoryInput) => void;
+  onSubmit: (
+    input: CreateTradePostCategoryInput | UpdateTradePostCategoryInput,
+  ) => void;
 }
 
-function describeServerError(error: unknown): string {
-  if (!(error instanceof ApiError)) return 'Không thể tạo danh mục. Vui lòng thử lại.';
+function describeServerError(error: unknown, mode: "create" | "edit"): string {
+  if (!(error instanceof ApiError)) {
+    return mode === "create"
+      ? "Không thể tạo danh mục. Vui lòng thử lại."
+      : "Không thể lưu danh mục. Vui lòng thử lại.";
+  }
 
   const detailMessages = (error.details ?? []).flatMap((detail) => {
-    if (typeof detail === 'string') return detail.trim() ? [detail] : [];
-    if (!detail || typeof detail !== 'object') return [];
+    if (typeof detail === "string") return detail.trim() ? [detail] : [];
+    if (!detail || typeof detail !== "object") return [];
     const message = (detail as { message?: unknown }).message;
-    return typeof message === 'string' && message.trim() ? [message] : [];
+    return typeof message === "string" && message.trim() ? [message] : [];
   });
 
-  return detailMessages.length > 0 ? detailMessages.join('; ') : error.message;
+  if (detailMessages.length > 0) return detailMessages.join("; ");
+  return error.message;
 }
 
 export function TradePostCategoryFormModal({
   open,
+  mode,
+  initialValues,
   confirmLoading,
   serverError,
   onCancel,
@@ -73,6 +99,7 @@ export function TradePostCategoryFormModal({
     handleSubmit,
     reset,
     setError,
+    clearErrors,
     formState: { errors },
   } = useForm<TradePostCategoryFormValues>({
     resolver: zodResolver(tradePostCategoryFormSchema),
@@ -80,43 +107,80 @@ export function TradePostCategoryFormModal({
   });
 
   useEffect(() => {
-    if (open) reset(DEFAULT_VALUES);
-  }, [open, reset]);
+    if (!open) return;
+
+    reset({
+      ...DEFAULT_VALUES,
+      ...(initialValues ?? {}),
+      description: initialValues?.description ?? "",
+      sortOrder: initialValues?.sortOrder ?? 0,
+      requiresPromotionDetails:
+        initialValues?.requiresPromotionDetails ?? false,
+      isActive: initialValues?.isActive ?? true,
+    });
+  }, [initialValues, open, reset]);
 
   useEffect(() => {
-    if (!serverError) return;
+    if (!serverError) {
+      clearErrors();
+      return;
+    }
 
     const fields: Array<keyof TradePostCategoryFormValues> = [
-      'code',
-      'name',
-      'description',
-      'sortOrder',
-      'requiresPromotionDetails',
-      'isActive',
+      "name",
+      "description",
+      "sortOrder",
+      "requiresPromotionDetails",
+      "isActive",
     ];
     for (const field of fields) {
-      const fieldError = getApiFieldError(serverError, field, 'Giá trị không hợp lệ');
-      if (fieldError) setError(field, { type: 'server', message: fieldError });
+      const fieldError = getApiFieldError(
+        serverError,
+        field,
+        "Giá trị không hợp lệ",
+      );
+      if (fieldError) {
+        setError(field, { type: "server", message: fieldError });
+      } else {
+        clearErrors(field);
+      }
     }
-  }, [serverError, setError]);
+  }, [clearErrors, serverError, setError]);
 
   const submit = (values: TradePostCategoryFormValues): void => {
-    onSubmit({
-      code: values.code.trim(),
+    const normalizedDescription = values.description.trim();
+    const commonPayload = {
       name: values.name.trim(),
-      description: values.description.trim() || undefined,
+      description: normalizedDescription || null,
       sortOrder: values.sortOrder,
       requiresPromotionDetails: values.requiresPromotionDetails,
+    };
+
+    if (mode === "edit") {
+      onSubmit({
+        ...commonPayload,
+        version: initialValues?.version ?? 0,
+      });
+      return;
+    }
+
+    onSubmit({
+      ...commonPayload,
+      description: normalizedDescription || undefined,
       isActive: values.isActive,
     });
   };
 
   return (
     <Modal
-      title="Tạo danh mục tin giao thương"
+      title={
+        mode === "edit"
+          ? "Chỉnh sửa danh mục tin giao thương"
+          : "Tạo danh mục tin giao thương"
+      }
       open={open}
-      width={600}
-      okText="Tạo danh mục"
+      width={640}
+      okText={mode === "edit" ? "Lưu thay đổi" : "Tạo danh mục"}
       cancelText="Hủy"
       confirmLoading={confirmLoading}
       mask={{ closable: !confirmLoading }}
@@ -129,35 +193,22 @@ export function TradePostCategoryFormModal({
         <Alert
           type="error"
           showIcon
-          title="Không thể tạo danh mục"
-          description={describeServerError(serverError)}
+          title={
+            mode === "edit"
+              ? "Không thể lưu danh mục"
+              : "Không thể tạo danh mục"
+          }
+          description={describeServerError(serverError, mode)}
           style={{ marginBottom: 16 }}
         />
       )}
 
       <Form layout="vertical">
-        <Controller
-          name="code"
-          control={control}
-          render={({ field }) => (
-            <Form.Item
-              label="Mã danh mục"
-              required
-              validateStatus={errors.code ? 'error' : undefined}
-              help={errors.code?.message ?? 'Chỉ chữ thường, số và dấu gạch ngang.'}
-            >
-              <Input
-                {...field}
-                autoFocus
-                maxLength={50}
-                placeholder="cay-an-trai"
-                onChange={(event) => field.onChange(
-                  event.target.value.toLowerCase().replace(/[\s_]+/g, '-'),
-                )}
-              />
-            </Form.Item>
-          )}
-        />
+        {initialValues?.slug ? (
+          <Form.Item label="Slug">
+            <Typography.Text code>{initialValues.slug}</Typography.Text>
+          </Form.Item>
+        ) : null}
 
         <Controller
           name="name"
@@ -166,10 +217,16 @@ export function TradePostCategoryFormModal({
             <Form.Item
               label="Tên danh mục"
               required
-              validateStatus={errors.name ? 'error' : undefined}
+              validateStatus={errors.name ? "error" : undefined}
               help={errors.name?.message}
             >
-              <Input {...field} maxLength={120} showCount placeholder="Cây ăn trái" />
+              <Input
+                {...field}
+                autoFocus
+                maxLength={120}
+                showCount
+                placeholder="Cây ăn trái"
+              />
             </Form.Item>
           )}
         />
@@ -180,7 +237,7 @@ export function TradePostCategoryFormModal({
           render={({ field }) => (
             <Form.Item
               label="Mô tả"
-              validateStatus={errors.description ? 'error' : undefined}
+              validateStatus={errors.description ? "error" : undefined}
               help={errors.description?.message}
             >
               <Input.TextArea
@@ -203,10 +260,16 @@ export function TradePostCategoryFormModal({
                 <Form.Item
                   label="Thứ tự hiển thị"
                   required
-                  validateStatus={errors.sortOrder ? 'error' : undefined}
+                  validateStatus={errors.sortOrder ? "error" : undefined}
                   help={errors.sortOrder?.message}
                 >
-                  <InputNumber {...field} min={0} precision={0} style={{ width: '100%' }} />
+                  <InputNumber
+                    {...field}
+                    min={0}
+                    precision={0}
+                    style={{ width: "100%" }}
+                    onChange={(value) => field.onChange(value ?? 0)}
+                  />
                 </Form.Item>
               )}
             />
@@ -219,7 +282,9 @@ export function TradePostCategoryFormModal({
                 <Form.Item
                   label="Chi tiết khuyến mãi"
                   tooltip="Bắt buộc người đăng nhập phần trăm và thời gian khuyến mãi."
-                  validateStatus={errors.requiresPromotionDetails ? 'error' : undefined}
+                  validateStatus={
+                    errors.requiresPromotionDetails ? "error" : undefined
+                  }
                   help={errors.requiresPromotionDetails?.message}
                 >
                   <Switch
@@ -232,26 +297,28 @@ export function TradePostCategoryFormModal({
               )}
             />
           </Col>
-          <Col xs={24} sm={8}>
-            <Controller
-              name="isActive"
-              control={control}
-              render={({ field }) => (
-                <Form.Item
-                  label="Trạng thái"
-                  validateStatus={errors.isActive ? 'error' : undefined}
-                  help={errors.isActive?.message}
-                >
-                  <Switch
-                    checked={field.value}
-                    checkedChildren="Hoạt động"
-                    unCheckedChildren="Ngừng"
-                    onChange={field.onChange}
-                  />
-                </Form.Item>
-              )}
-            />
-          </Col>
+          {mode === "create" ? (
+            <Col xs={24} sm={8}>
+              <Controller
+                name="isActive"
+                control={control}
+                render={({ field }) => (
+                  <Form.Item
+                    label="Trạng thái"
+                    validateStatus={errors.isActive ? "error" : undefined}
+                    help={errors.isActive?.message}
+                  >
+                    <Switch
+                      checked={field.value}
+                      checkedChildren="Hoạt động"
+                      unCheckedChildren="Ngừng"
+                      onChange={field.onChange}
+                    />
+                  </Form.Item>
+                )}
+              />
+            </Col>
+          ) : null}
         </Row>
       </Form>
     </Modal>

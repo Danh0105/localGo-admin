@@ -1,6 +1,7 @@
 export interface TradePostCategoryAdminItem {
   id: string;
   code: string;
+  slug: string;
   name: string;
   description: string | null;
   sortOrder: number;
@@ -21,10 +22,32 @@ export interface TradePostCategoryAdminQuery {
 }
 
 export interface CreateTradePostCategoryInput {
-  code: string;
   name: string;
-  description?: string;
+  description?: string | null;
   sortOrder: number;
   requiresPromotionDetails: boolean;
   isActive: boolean;
+}
+
+export interface UpdateTradePostCategoryInput {
+  name: string;
+  description: string | null;
+  sortOrder: number;
+  requiresPromotionDetails: boolean;
+  version: number;
+}
+
+export interface TradePostCategoryStatusInput {
+  isActive: boolean;
+  version: number;
+}
+
+export interface TradePostCategoryReorderItem {
+  id: string;
+  sortOrder: number;
+  version: number;
+}
+
+export interface ReorderTradePostCategoriesInput {
+  items: TradePostCategoryReorderItem[];
 }

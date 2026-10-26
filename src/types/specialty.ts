@@ -1,4 +1,17 @@
-export type SpecialtyCategory = 'Món ăn' | 'Trái cây' | 'Quà mang về';
+
+export type SpecialtyCategory =
+  | 'Món ăn'
+  | 'Trái cây'
+  | 'Quà mang về';
+
+export interface SpecialtyBuyPlace {
+  id: string;
+  name: string;
+  address: string;
+  googleMapsUrl: string;
+  phone: string;
+  email: string;
+}
 
 export interface SpecialtyAdminItem {
   id: string;
@@ -7,9 +20,10 @@ export interface SpecialtyAdminItem {
   category: SpecialtyCategory;
   price: string;
   season: string;
+  googleMapsUrl?: string;
   summary: string;
   description: string[];
-  buyPlaces: string[];
+  buyPlaces: SpecialtyBuyPlace[];
   mediaId: string | null;
   imageUrl: string | null;
   imageAlt: string;
@@ -17,6 +31,7 @@ export interface SpecialtyAdminItem {
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
+  deletedAt?: string | null;
   createdBy: string | null;
   updatedBy: string | null;
 }
@@ -26,6 +41,7 @@ export interface SpecialtyQuery {
   limit: number;
   category?: SpecialtyCategory;
   search?: string;
+  includeDeleted?: boolean;
 }
 
 export interface SpecialtyPayload {
@@ -33,9 +49,10 @@ export interface SpecialtyPayload {
   category: SpecialtyCategory;
   price: string;
   season: string;
+  googleMapsUrl?: string;
   summary: string;
   description: string[];
-  buyPlaces: string[];
+  buyPlaces: SpecialtyBuyPlace[];
   mediaId?: string | null;
   imageAlt: string;
   sortOrder?: number;

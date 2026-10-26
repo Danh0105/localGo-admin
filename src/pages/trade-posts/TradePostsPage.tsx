@@ -1,6 +1,8 @@
 import {
   AppstoreOutlined,
   CheckCircleOutlined,
+  CommentOutlined,
+  MessageOutlined,
   DeleteOutlined,
   EnvironmentOutlined,
   EyeOutlined,
@@ -10,10 +12,11 @@ import {
   ShopOutlined,
   StarFilled,
   UserOutlined,
-} from '@ant-design/icons';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+} from "@ant-design/icons";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Avatar,
+  Badge,
   Button,
   Descriptions,
   Drawer,
@@ -30,9 +33,11 @@ import {
   Tooltip,
   Typography,
   message,
-} from 'antd';
-import type { JSX } from 'react';
-import { useState } from 'react';
+} from "antd";
+import type { JSX } from "react";
+import { useState } from "react";
+import { fetchAdminReviewStats } from "../../api/reviews";
+import { fetchPublicTradePostCategories } from "../../api/trade-post-categories";
 import {
   approveTradePost,
   deleteTradePost,
@@ -42,24 +47,53 @@ import {
   rejectTradePost,
   setTradePostFeatured,
   unhideTradePost,
-} from '../../api/trade-posts';
-import { ApiError } from '../../types/api';
+} from "../../api/trade-posts";
+import { ApiError } from "../../types/api";
+import { BUSINESS_TYPE_LABEL } from "../../types/business-application";
 import {
   TRADE_POST_CATEGORY_LABEL,
+  TRADE_POST_PURPOSE_LABEL,
   TRADE_POST_STATUS_COLOR,
   TRADE_POST_STATUS_LABEL,
+  getTradePostCategoryLabel,
   type TradePost,
   type TradePostCategory,
+  type TradePostPurpose,
   type TradePostStatus,
-} from '../../types/trade-post';
-import { TradePostCategoriesTab } from './TradePostCategoriesTab';
-import './trade-posts-page.css';
+} from "../../types/trade-post";
+import { TradePostCategoriesTab } from "./TradePostCategoriesTab";
+import {
+  TradeConversationsTab,
+  type TradeConversationPostFilter,
+} from "./TradeConversationsTab";
+import { TradeReviewsTab, type TradeReviewPostFilter } from "./TradeReviewsTab";
+import "./trade-posts-page.css";
+const STATUS_OPTIONS = Object.entries(TRADE_POST_STATUS_LABEL).map(
+  ([value, label]) => ({ value, label }),
+);
+const PURPOSE_OPTIONS = Object.entries(TRADE_POST_PURPOSE_LABEL).map(
+  ([value, label]) => ({ value, label }),
+);
 
-const STATUS_OPTIONS = Object.entries(TRADE_POST_STATUS_LABEL).map(([value, label]) => ({ value, label }));
-const CATEGORY_OPTIONS = Object.entries(TRADE_POST_CATEGORY_LABEL).map(([value, label]) => ({ value, label }));
+function isNonProfit(post: TradePost): boolean {
+  return post.purpose === "NON_PROFIT";
+}
+
+/** Event window like "10/02/2027 – 12/02/2027", or null when the post has no event dates. */
+function formatEventRange(post: TradePost): string | null {
+  const day = (value: string) => new Date(value).toLocaleDateString("vi-VN");
+  if (post.eventStartAt && post.eventEndAt)
+    return `${day(post.eventStartAt)} – ${day(post.eventEndAt)}`;
+  if (post.eventStartAt) return `Từ ${day(post.eventStartAt)}`;
+  if (post.eventEndAt) return `Đến ${day(post.eventEndAt)}`;
+  return null;
+}
+const LEGACY_CATEGORY_OPTIONS = Object.entries(TRADE_POST_CATEGORY_LABEL).map(
+  ([value, label]) => ({ value, label }),
+);
 
 function formatDate(value: string | null): string {
-  return value ? new Date(value).toLocaleString('vi-VN') : '—';
+  return value ? new Date(value).toLocaleString("vi-VN") : "—";
 }
 
 export function TradePostsPage(): JSX.Element {
@@ -68,45 +102,89 @@ export function TradePostsPage(): JSX.Element {
   const [limit, setLimit] = useState(20);
   const [status, setStatus] = useState<TradePostStatus>();
   const [category, setCategory] = useState<TradePostCategory>();
+  const [purpose, setPurpose] = useState<TradePostPurpose>();
   const [search, setSearch] = useState<string>();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [rejectTarget, setRejectTarget] = useState<TradePost | null>(null);
-  const [rejectReason, setRejectReason] = useState('');
+  const [rejectReason, setRejectReason] = useState("");
+  const [activeTab, setActiveTab] = useState("moderation");
+  const [reviewPostFilter, setReviewPostFilter] =
+    useState<TradeReviewPostFilter | null>(null);
+  const [conversationPostFilter, setConversationPostFilter] =
+    useState<TradeConversationPostFilter | null>(null);
+
+  const { data: reviewStats } = useQuery({
+    queryKey: ["admin-review-stats", undefined],
+    queryFn: ({ signal }) => fetchAdminReviewStats(undefined, signal),
+  });
+
+  const { data: categoryData } = useQuery({
+    queryKey: ["public-trade-post-categories"],
+    queryFn: ({ signal }) => fetchPublicTradePostCategories(signal),
+  });
+
+  const categoryOptions = categoryData?.length
+    ? categoryData.map((item) => ({
+        value: item.slug || item.code,
+        label: item.name,
+      }))
+    : LEGACY_CATEGORY_OPTIONS;
+  const categoryLabelByValue = new Map(
+    categoryOptions.map((item) => [item.value, item.label]),
+  );
+  const renderCategoryLabel = (value: TradePostCategory): string =>
+    categoryLabelByValue.get(value) ?? getTradePostCategoryLabel(value);
 
   const { data, isLoading, isFetching } = useQuery({
-    queryKey: ['admin-trade-posts', { page, limit, status, category, search }],
-    queryFn: () => fetchAdminTradePosts({ page, limit, status, category, search, sortBy: 'newest' }),
+    queryKey: [
+      "admin-trade-posts",
+      { page, limit, status, category, purpose, search },
+    ],
+    queryFn: () =>
+      fetchAdminTradePosts({
+        page,
+        limit,
+        status,
+        category,
+        purpose,
+        search,
+        sortBy: "newest",
+      }),
     placeholderData: (previous) => previous,
   });
 
   const { data: selectedPost, isLoading: isDetailLoading } = useQuery({
-    queryKey: ['admin-trade-post-detail', selectedId],
+    queryKey: ["admin-trade-post-detail", selectedId],
     queryFn: () => fetchAdminTradePostDetail(selectedId!),
     enabled: !!selectedId,
   });
 
   function invalidate(): void {
-    void queryClient.invalidateQueries({ queryKey: ['admin-trade-posts'] });
-    void queryClient.invalidateQueries({ queryKey: ['admin-trade-post-detail'] });
+    void queryClient.invalidateQueries({ queryKey: ["admin-trade-posts"] });
+    void queryClient.invalidateQueries({
+      queryKey: ["admin-trade-post-detail"],
+    });
   }
 
   function onMutationError(error: unknown): void {
     if (error instanceof ApiError) {
-      if (error.code === 'INVALID_STATUS_TRANSITION') {
-        message.error('Trạng thái tin đã thay đổi. Danh sách đang được tải lại.');
+      if (error.code === "INVALID_STATUS_TRANSITION") {
+        message.error(
+          "Trạng thái tin đã thay đổi. Danh sách đang được tải lại.",
+        );
         invalidate();
         return;
       }
       message.error(error.message);
       return;
     }
-    message.error('Thao tác thất bại, vui lòng thử lại');
+    message.error("Thao tác thất bại, vui lòng thử lại");
   }
 
   const approveMutation = useMutation({
     mutationFn: approveTradePost,
     onSuccess: () => {
-      message.success('Đã duyệt và xuất bản tin giao thương');
+      message.success("Đã duyệt và xuất bản tin giao thương");
       setSelectedId(null);
       invalidate();
     },
@@ -114,11 +192,12 @@ export function TradePostsPage(): JSX.Element {
   });
 
   const rejectMutation = useMutation({
-    mutationFn: ({ id, reason }: { id: string; reason: string }) => rejectTradePost(id, reason),
+    mutationFn: ({ id, reason }: { id: string; reason: string }) =>
+      rejectTradePost(id, reason),
     onSuccess: () => {
-      message.success('Đã từ chối tin giao thương');
+      message.success("Đã từ chối tin giao thương");
       setRejectTarget(null);
-      setRejectReason('');
+      setRejectReason("");
       setSelectedId(null);
       invalidate();
     },
@@ -128,7 +207,7 @@ export function TradePostsPage(): JSX.Element {
   const hideMutation = useMutation({
     mutationFn: hideTradePost,
     onSuccess: () => {
-      message.success('Đã ẩn tin giao thương');
+      message.success("Đã ẩn tin giao thương");
       setSelectedId(null);
       invalidate();
     },
@@ -138,7 +217,7 @@ export function TradePostsPage(): JSX.Element {
   const unhideMutation = useMutation({
     mutationFn: unhideTradePost,
     onSuccess: () => {
-      message.success('Đã hiển thị lại tin giao thương');
+      message.success("Đã hiển thị lại tin giao thương");
       setSelectedId(null);
       invalidate();
     },
@@ -148,7 +227,7 @@ export function TradePostsPage(): JSX.Element {
   const deleteMutation = useMutation({
     mutationFn: deleteTradePost,
     onSuccess: () => {
-      message.success('Đã xóa tin giao thương');
+      message.success("Đã xóa tin giao thương");
       setSelectedId(null);
       invalidate();
     },
@@ -156,7 +235,8 @@ export function TradePostsPage(): JSX.Element {
   });
 
   const featureMutation = useMutation({
-    mutationFn: ({ id, featured }: { id: string; featured: boolean }) => setTradePostFeatured(id, featured),
+    mutationFn: ({ id, featured }: { id: string; featured: boolean }) =>
+      setTradePostFeatured(id, featured),
     onSuccess: invalidate,
     onError: onMutationError,
   });
@@ -164,7 +244,19 @@ export function TradePostsPage(): JSX.Element {
   function openReject(post: TradePost): void {
     setSelectedId(null);
     setRejectTarget(post);
-    setRejectReason('');
+    setRejectReason("");
+  }
+
+  function openPostConversations(post: TradePost): void {
+    setSelectedId(null);
+    setConversationPostFilter({ id: post.id, title: post.title });
+    setActiveTab("conversations");
+  }
+
+  function openPostReviews(post: TradePost): void {
+    setSelectedId(null);
+    setReviewPostFilter({ id: post.id, title: post.title });
+    setActiveTab("reviews");
   }
 
   return (
@@ -173,19 +265,26 @@ export function TradePostsPage(): JSX.Element {
         <div>
           <Typography.Title level={2}>Duyệt tin giao thương</Typography.Title>
           <Typography.Paragraph>
-            Kiểm tra nội dung, thông tin liên hệ và quyết định xuất bản tin trên LocalGo.
+            Kiểm tra nội dung, thông tin liên hệ và quyết định xuất bản tin trên
+            LocalGo.
           </Typography.Paragraph>
         </div>
-        <Tag color="gold" icon={<ShopOutlined />} className="trade-moderation-header__tag">
-          {data?.data.filter((post) => post.status === 'PENDING').length ?? 0} tin chờ duyệt
+        <Tag
+          color="gold"
+          icon={<ShopOutlined />}
+          className="trade-moderation-header__tag"
+        >
+          {data?.data.filter((post) => post.status === "PENDING").length ?? 0}{" "}
+          tin chờ duyệt
         </Tag>
       </div>
 
       <Tabs
-        defaultActiveKey="moderation"
+        activeKey={activeTab}
+        onChange={setActiveTab}
         items={[
           {
-            key: 'moderation',
+            key: "moderation",
             label: (
               <span>
                 <ShopOutlined /> Duyệt tin
@@ -217,10 +316,20 @@ export function TradePostsPage(): JSX.Element {
                   <Select
                     allowClear
                     placeholder="Loại tin"
-                    options={CATEGORY_OPTIONS}
+                    options={categoryOptions}
                     value={category}
                     onChange={(value) => {
                       setCategory(value);
+                      setPage(1);
+                    }}
+                  />
+                  <Select
+                    allowClear
+                    placeholder="Mục đích"
+                    options={PURPOSE_OPTIONS}
+                    value={purpose}
+                    onChange={(value) => {
+                      setPurpose(value);
                       setPage(1);
                     }}
                   />
@@ -232,7 +341,9 @@ export function TradePostsPage(): JSX.Element {
                   dataSource={data?.data}
                   scroll={{ x: 1100 }}
                   className="trade-moderation-table"
-                  onRow={(record) => ({ onDoubleClick: () => setSelectedId(record.id) })}
+                  onRow={(record) => ({
+                    onDoubleClick: () => setSelectedId(record.id),
+                  })}
                   pagination={{
                     current: page,
                     pageSize: limit,
@@ -246,109 +357,161 @@ export function TradePostsPage(): JSX.Element {
                   }}
                   columns={[
                     {
-                      title: 'Tin giao thương',
-                      key: 'post',
+                      title: "Tin giao thương",
+                      key: "post",
                       width: 360,
                       render: (_, record) => (
                         <div className="trade-post-cell">
-                          <Avatar shape="square" size={54} src={record.thumbnailUrl} icon={<ShopOutlined />} />
+                          <Avatar
+                            shape="square"
+                            size={54}
+                            src={record.thumbnailUrl}
+                            icon={<ShopOutlined />}
+                          />
                           <div>
-                            <Typography.Text strong>{record.title}</Typography.Text>
-                            <Typography.Text type="secondary">{record.summary}</Typography.Text>
+                            <Typography.Text strong>
+                              {record.title}
+                            </Typography.Text>
+                            <Typography.Text type="secondary">
+                              {record.summary}
+                            </Typography.Text>
                           </div>
                         </div>
                       ),
                     },
                     {
-                      title: 'Người đăng',
-                      key: 'owner',
+                      title: "Người đăng",
+                      key: "owner",
                       width: 230,
                       render: (_, record) => (
                         <div className="trade-owner-cell">
-                          <Avatar src={record.owner?.avatarUrl} icon={<UserOutlined />} />
+                          <Avatar
+                            src={record.owner?.avatarUrl}
+                            icon={<UserOutlined />}
+                          />
                           <div>
                             <Typography.Text strong>
-                              {record.owner?.displayName ?? `Tài khoản ${record.ownerId.slice(0, 8)}`}
+                              {record.owner?.displayName ??
+                                `Tài khoản ${record.ownerId.slice(0, 8)}`}
                             </Typography.Text>
                             <Typography.Text type="secondary">
-                              {record.owner?.email ?? record.owner?.phone ?? record.ownerId}
+                              {record.owner?.email ??
+                                record.owner?.phone ??
+                                record.ownerId}
                             </Typography.Text>
                           </div>
                         </div>
                       ),
                     },
                     {
-                      title: 'Loại tin',
-                      dataIndex: 'category',
-                      key: 'category',
+                      title: "Loại tin",
+                      dataIndex: "category",
+                      key: "category",
                       width: 130,
-                      render: (value: TradePostCategory) => TRADE_POST_CATEGORY_LABEL[value],
+                      render: (value: TradePostCategory) =>
+                        renderCategoryLabel(value),
                     },
                     {
-                      title: 'Giá',
-                      key: 'price',
+                      title: "Giá",
+                      key: "price",
                       width: 145,
-                      render: (_, record) => record.priceLabel ?? record.price ?? '—',
+                      render: (_, record) =>
+                        isNonProfit(record) ? (
+                          <Tag color="magenta">
+                            {TRADE_POST_PURPOSE_LABEL.NON_PROFIT}
+                          </Tag>
+                        ) : (
+                          (record.priceLabel ?? record.price ?? "—")
+                        ),
                     },
                     {
-                      title: 'Trạng thái',
-                      dataIndex: 'status',
-                      key: 'status',
+                      title: "Trạng thái",
+                      dataIndex: "status",
+                      key: "status",
                       width: 140,
                       render: (value: TradePostStatus) => (
-                        <Tag color={TRADE_POST_STATUS_COLOR[value]}>{TRADE_POST_STATUS_LABEL[value]}</Tag>
+                        <Tag color={TRADE_POST_STATUS_COLOR[value]}>
+                          {TRADE_POST_STATUS_LABEL[value]}
+                        </Tag>
                       ),
                     },
                     {
-                      title: 'Nổi bật',
-                      dataIndex: 'featured',
-                      key: 'featured',
+                      title: "Nổi bật",
+                      dataIndex: "featured",
+                      key: "featured",
                       width: 90,
-                      align: 'center',
+                      align: "center",
                       render: (featured: boolean, record) => (
                         <Switch
                           size="small"
                           checked={featured}
-                          disabled={record.status !== 'PUBLISHED'}
-                          loading={featureMutation.isPending && featureMutation.variables?.id === record.id}
-                          onChange={(checked) => featureMutation.mutate({ id: record.id, featured: checked })}
+                          disabled={record.status !== "PUBLISHED"}
+                          loading={
+                            featureMutation.isPending &&
+                            featureMutation.variables?.id === record.id
+                          }
+                          onChange={(checked) =>
+                            featureMutation.mutate({
+                              id: record.id,
+                              featured: checked,
+                            })
+                          }
                         />
                       ),
                     },
                     {
-                      title: 'Ngày gửi',
-                      dataIndex: 'createdAt',
-                      key: 'createdAt',
+                      title: "Ngày gửi",
+                      dataIndex: "createdAt",
+                      key: "createdAt",
                       width: 165,
                       render: formatDate,
                     },
                     {
-                      title: 'Thao tác',
-                      key: 'actions',
-                      fixed: 'right',
+                      title: "Thao tác",
+                      key: "actions",
+                      fixed: "right",
                       width: 245,
                       render: (_, record) => (
                         <Space size={6}>
                           <Tooltip title="Xem chi tiết">
-                            <Button size="small" icon={<EyeOutlined />} onClick={() => setSelectedId(record.id)} />
+                            <Button
+                              size="small"
+                              icon={<EyeOutlined />}
+                              onClick={() => setSelectedId(record.id)}
+                            />
                           </Tooltip>
-                          {record.status === 'PENDING' && (
+                          {record.status === "PENDING" && (
                             <>
                               <Popconfirm
                                 title="Duyệt và xuất bản tin?"
                                 description="Tin sẽ hiển thị công khai trên LocalGo."
                                 okText="Duyệt tin"
                                 cancelText="Hủy"
-                                onConfirm={() => approveMutation.mutate(record.id)}
+                                onConfirm={() =>
+                                  approveMutation.mutate(record.id)
+                                }
                               >
-                                <Button size="small" type="primary" loading={approveMutation.isPending && approveMutation.variables === record.id}>
+                                <Button
+                                  size="small"
+                                  type="primary"
+                                  loading={
+                                    approveMutation.isPending &&
+                                    approveMutation.variables === record.id
+                                  }
+                                >
                                   Duyệt
                                 </Button>
                               </Popconfirm>
-                              <Button size="small" danger onClick={() => openReject(record)}>Từ chối</Button>
+                              <Button
+                                size="small"
+                                danger
+                                onClick={() => openReject(record)}
+                              >
+                                Từ chối
+                              </Button>
                             </>
                           )}
-                          {record.status === 'PUBLISHED' && (
+                          {record.status === "PUBLISHED" && (
                             <>
                               <Popconfirm
                                 title="Ẩn tin đã xuất bản?"
@@ -360,7 +523,10 @@ export function TradePostsPage(): JSX.Element {
                                 <Button
                                   size="small"
                                   icon={<EyeInvisibleOutlined />}
-                                  loading={hideMutation.isPending && hideMutation.variables === record.id}
+                                  loading={
+                                    hideMutation.isPending &&
+                                    hideMutation.variables === record.id
+                                  }
                                 >
                                   Ẩn
                                 </Button>
@@ -371,31 +537,41 @@ export function TradePostsPage(): JSX.Element {
                                 okText="Xóa tin"
                                 cancelText="Hủy"
                                 okButtonProps={{ danger: true }}
-                                onConfirm={() => deleteMutation.mutate(record.id)}
+                                onConfirm={() =>
+                                  deleteMutation.mutate(record.id)
+                                }
                               >
                                 <Button
                                   size="small"
                                   danger
                                   icon={<DeleteOutlined />}
-                                  loading={deleteMutation.isPending && deleteMutation.variables === record.id}
+                                  loading={
+                                    deleteMutation.isPending &&
+                                    deleteMutation.variables === record.id
+                                  }
                                 >
                                   Xóa
                                 </Button>
                               </Popconfirm>
                             </>
                           )}
-                          {record.status === 'HIDDEN' && (
+                          {record.status === "HIDDEN" && (
                             <>
                               <Popconfirm
                                 title="Hiển thị lại tin?"
                                 okText="Hiển thị"
                                 cancelText="Hủy"
-                                onConfirm={() => unhideMutation.mutate(record.id)}
+                                onConfirm={() =>
+                                  unhideMutation.mutate(record.id)
+                                }
                               >
                                 <Button
                                   size="small"
                                   icon={<EyeOutlined />}
-                                  loading={unhideMutation.isPending && unhideMutation.variables === record.id}
+                                  loading={
+                                    unhideMutation.isPending &&
+                                    unhideMutation.variables === record.id
+                                  }
                                 >
                                   Hiện
                                 </Button>
@@ -405,13 +581,18 @@ export function TradePostsPage(): JSX.Element {
                                 okText="Xóa tin"
                                 cancelText="Hủy"
                                 okButtonProps={{ danger: true }}
-                                onConfirm={() => deleteMutation.mutate(record.id)}
+                                onConfirm={() =>
+                                  deleteMutation.mutate(record.id)
+                                }
                               >
                                 <Button
                                   size="small"
                                   danger
                                   icon={<DeleteOutlined />}
-                                  loading={deleteMutation.isPending && deleteMutation.variables === record.id}
+                                  loading={
+                                    deleteMutation.isPending &&
+                                    deleteMutation.variables === record.id
+                                  }
                                 >
                                   Xóa
                                 </Button>
@@ -427,7 +608,42 @@ export function TradePostsPage(): JSX.Element {
             ),
           },
           {
-            key: 'categories',
+            key: "reviews",
+            label: (
+              <span>
+                <CommentOutlined /> Đánh giá{" "}
+                <Badge
+                  count={reviewStats?.byStatus.PENDING ?? 0}
+                  size="small"
+                  title="Đánh giá chờ duyệt"
+                />
+              </span>
+            ),
+            children: (
+              <TradeReviewsTab
+                // Remount on filter change so the status filter resets to "all statuses" for one post.
+                key={reviewPostFilter?.id ?? "all"}
+                postFilter={reviewPostFilter}
+                onPostFilterChange={setReviewPostFilter}
+              />
+            ),
+          },
+          {
+            key: "conversations",
+            label: (
+              <span>
+                <MessageOutlined /> Hội thoại
+              </span>
+            ),
+            children: (
+              <TradeConversationsTab
+                postFilter={conversationPostFilter}
+                onPostFilterChange={setConversationPostFilter}
+              />
+            ),
+          },
+          {
+            key: "categories",
             label: (
               <span>
                 <AppstoreOutlined /> Danh mục tin giao thương
@@ -444,22 +660,30 @@ export function TradePostsPage(): JSX.Element {
         size={720}
         loading={isDetailLoading}
         onClose={() => setSelectedId(null)}
-        extra={selectedPost?.status === 'PENDING' ? (
-          <Space>
-            <Button danger onClick={() => openReject(selectedPost)}>Từ chối</Button>
-            <Popconfirm
-              title="Duyệt và xuất bản tin?"
-              description="Tin sẽ hiển thị công khai trên LocalGo."
-              okText="Duyệt tin"
-              cancelText="Hủy"
-              onConfirm={() => approveMutation.mutate(selectedPost.id)}
-            >
-              <Button type="primary" icon={<CheckCircleOutlined />} loading={approveMutation.isPending}>
-                Duyệt tin
+        extra={
+          selectedPost?.status === "PENDING" ? (
+            <Space>
+              <Button danger onClick={() => openReject(selectedPost)}>
+                Từ chối
               </Button>
-            </Popconfirm>
-          </Space>
-        ) : undefined}
+              <Popconfirm
+                title="Duyệt và xuất bản tin?"
+                description="Tin sẽ hiển thị công khai trên LocalGo."
+                okText="Duyệt tin"
+                cancelText="Hủy"
+                onConfirm={() => approveMutation.mutate(selectedPost.id)}
+              >
+                <Button
+                  type="primary"
+                  icon={<CheckCircleOutlined />}
+                  loading={approveMutation.isPending}
+                >
+                  Duyệt tin
+                </Button>
+              </Popconfirm>
+            </Space>
+          ) : undefined
+        }
       >
         {selectedPost && (
           <article className="trade-post-detail">
@@ -469,11 +693,20 @@ export function TradePostsPage(): JSX.Element {
               className="trade-post-detail__cover"
             />
             <div className="trade-post-detail__meta">
-              <Tag color="purple">{TRADE_POST_CATEGORY_LABEL[selectedPost.category]}</Tag>
+              <Tag color="purple">
+                {renderCategoryLabel(selectedPost.category)}
+              </Tag>
+              {isNonProfit(selectedPost) && (
+                <Tag color="magenta">{TRADE_POST_PURPOSE_LABEL.NON_PROFIT}</Tag>
+              )}
               <Tag color={TRADE_POST_STATUS_COLOR[selectedPost.status]}>
                 {TRADE_POST_STATUS_LABEL[selectedPost.status]}
               </Tag>
-              {selectedPost.featured && <Tag color="gold" icon={<StarFilled />}>Nổi bật</Tag>}
+              {selectedPost.featured && (
+                <Tag color="gold" icon={<StarFilled />}>
+                  Nổi bật
+                </Tag>
+              )}
             </div>
             <Typography.Title level={3}>{selectedPost.title}</Typography.Title>
             <Typography.Paragraph className="trade-post-detail__summary">
@@ -481,9 +714,54 @@ export function TradePostsPage(): JSX.Element {
             </Typography.Paragraph>
 
             <Descriptions column={2} bordered size="small">
-              <Descriptions.Item label="Giá">{selectedPost.priceLabel ?? selectedPost.price ?? 'Liên hệ'}</Descriptions.Item>
-              <Descriptions.Item label="Ngày gửi">{formatDate(selectedPost.createdAt)}</Descriptions.Item>
-              <Descriptions.Item label={<><EnvironmentOutlined /> Địa chỉ</>} span={2}>{selectedPost.address}</Descriptions.Item>
+              <Descriptions.Item label="Giá">
+                {isNonProfit(selectedPost)
+                  ? "Không có giá (phi lợi nhuận)"
+                  : (selectedPost.priceLabel ??
+                    selectedPost.price ??
+                    "Liên hệ")}
+              </Descriptions.Item>
+              <Descriptions.Item label="Ngày gửi">
+                {formatDate(selectedPost.createdAt)}
+              </Descriptions.Item>
+              <Descriptions.Item
+                label={
+                  <>
+                    <EnvironmentOutlined /> Địa chỉ
+                  </>
+                }
+                span={2}
+              >
+                {selectedPost.address}
+              </Descriptions.Item>
+              {formatEventRange(selectedPost) && (
+                <Descriptions.Item label="Thời gian sự kiện" span={2}>
+                  {formatEventRange(selectedPost)}
+                </Descriptions.Item>
+              )}
+              <Descriptions.Item
+                label={
+                  <>
+                    <StarFilled /> Đánh giá
+                  </>
+                }
+                span={2}
+              >
+                <Space size={10} wrap>
+                  <span>
+                    {selectedPost.reviewCount > 0
+                      ? `${Number(selectedPost.averageRating).toFixed(1)}/5 · ${selectedPost.reviewCount} đánh giá đã duyệt`
+                      : "Chưa có đánh giá đã duyệt"}
+                  </span>
+                  <Button
+                    size="small"
+                    icon={<CommentOutlined />}
+                    onClick={() => openPostReviews(selectedPost)}
+                  >
+                    Xem đánh giá
+                  </Button>
+                </Space>
+              </Descriptions.Item>
             </Descriptions>
 
             <Typography.Title level={5}>Nội dung chi tiết</Typography.Title>
@@ -493,34 +771,78 @@ export function TradePostsPage(): JSX.Element {
 
             <Typography.Title level={5}>Người đăng tin</Typography.Title>
             <div className="trade-owner-detail">
-              <Avatar size={46} src={selectedPost.owner?.avatarUrl} icon={<UserOutlined />} />
+              <Avatar
+                size={46}
+                src={selectedPost.owner?.avatarUrl}
+                icon={<UserOutlined />}
+              />
               <div className="trade-owner-detail__identity">
-                <strong>{selectedPost.owner?.displayName ?? 'Chưa có thông tin tài khoản'}</strong>
+                <strong>
+                  {selectedPost.owner?.displayName ??
+                    "Chưa có thông tin tài khoản"}
+                </strong>
                 <Space size={6} wrap>
-                  <Tag color={selectedPost.owner?.role === 'BUSINESS' ? 'purple' : 'blue'}>
-                    {selectedPost.owner?.role === 'BUSINESS' ? 'Business' : 'Người dùng'}
+                  <Tag
+                    color={
+                      selectedPost.owner?.role === "BUSINESS"
+                        ? "purple"
+                        : "blue"
+                    }
+                  >
+                    {selectedPost.owner?.role === "BUSINESS"
+                      ? "Business"
+                      : "Người dùng"}
                   </Tag>
+                  {selectedPost.owner?.role === "BUSINESS" && (
+                    <Tag color="geekblue">
+                      {
+                        BUSINESS_TYPE_LABEL[
+                          selectedPost.owner.businessType ?? "GENERAL"
+                        ]
+                      }
+                    </Tag>
+                  )}
                   {selectedPost.owner && (
-                    <Tag color={selectedPost.owner.status === 'ACTIVE' ? 'green' : 'red'}>
-                      {selectedPost.owner.status === 'ACTIVE' ? 'Đang hoạt động' : 'Đã khóa'}
+                    <Tag
+                      color={
+                        selectedPost.owner.status === "ACTIVE" ? "green" : "red"
+                      }
+                    >
+                      {selectedPost.owner.status === "ACTIVE"
+                        ? "Đang hoạt động"
+                        : "Đã khóa"}
                     </Tag>
                   )}
                 </Space>
               </div>
               <div className="trade-owner-detail__contact">
-                <span>{selectedPost.owner?.email ?? 'Chưa có email'}</span>
-                <span>{selectedPost.owner?.phone ?? 'Chưa có số điện thoại'}</span>
+                <span>{selectedPost.owner?.email ?? "Chưa có email"}</span>
+                <span>
+                  {selectedPost.owner?.phone ?? "Chưa có số điện thoại"}
+                </span>
                 <small>ID: {selectedPost.ownerId}</small>
               </div>
             </div>
+
+            <Button
+              icon={<MessageOutlined />}
+              style={{ marginTop: 16 }}
+              onClick={() => openPostConversations(selectedPost)}
+            >
+              Xem hội thoại của bài đăng
+            </Button>
 
             <Typography.Title level={5}>Thông tin liên hệ</Typography.Title>
             <div className="trade-contact-card">
               <Avatar icon={<UserOutlined />} />
               <div>
                 <strong>{selectedPost.contactName}</strong>
-                <span><PhoneOutlined /> {selectedPost.contactPhone}</span>
-                {selectedPost.contactZalo && <small>Zalo: {selectedPost.contactZalo}</small>}
+                <span>
+                  <PhoneOutlined /> {selectedPost.contactPhone}
+                </span>
+                {selectedPost.contactZalo && (
+                  <small>Zalo: {selectedPost.contactZalo}</small>
+                )}
               </div>
             </div>
 
@@ -535,19 +857,22 @@ export function TradePostsPage(): JSX.Element {
       </Drawer>
 
       <Modal
-        title={`Từ chối tin: ${rejectTarget?.title ?? ''}`}
+        title={`Từ chối tin: ${rejectTarget?.title ?? ""}`}
         open={!!rejectTarget}
         onCancel={() => {
           setRejectTarget(null);
-          setRejectReason('');
+          setRejectReason("");
         }}
         onOk={() => {
           if (!rejectTarget) return;
           if (rejectReason.trim().length < 10) {
-            message.warning('Vui lòng nhập lý do từ chối tối thiểu 10 ký tự');
+            message.warning("Vui lòng nhập lý do từ chối tối thiểu 10 ký tự");
             return;
           }
-          rejectMutation.mutate({ id: rejectTarget.id, reason: rejectReason.trim() });
+          rejectMutation.mutate({
+            id: rejectTarget.id,
+            reason: rejectReason.trim(),
+          });
         }}
         confirmLoading={rejectMutation.isPending}
         okText="Xác nhận từ chối"

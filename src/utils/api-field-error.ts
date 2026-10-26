@@ -5,6 +5,7 @@ type ApiFieldDetail = {
   path?: unknown;
   property?: unknown;
   message?: unknown;
+  messages?: unknown;
 };
 
 function isFieldPath(value: unknown, field: string): boolean {
@@ -26,9 +27,17 @@ export function getApiFieldError(error: unknown, field: string, fallback: string
 
     const fieldDetail = detail as ApiFieldDetail;
     if (![fieldDetail.field, fieldDetail.path, fieldDetail.property].some((value) => isFieldPath(value, field))) continue;
-    return typeof fieldDetail.message === 'string' && fieldDetail.message.trim()
-      ? fieldDetail.message
-      : fallback;
+
+    if (typeof fieldDetail.message === 'string' && fieldDetail.message.trim()) {
+      return fieldDetail.message;
+    }
+
+    if (Array.isArray(fieldDetail.messages)) {
+      const firstMessage = fieldDetail.messages.find((value): value is string => typeof value === 'string' && value.trim().length > 0);
+      return firstMessage ?? fallback;
+    }
+
+    return fallback;
   }
 
   return undefined;

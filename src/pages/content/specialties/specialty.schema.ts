@@ -1,11 +1,10 @@
 import { z } from 'zod';
 import type { SpecialtyAdminItem, SpecialtyPayload } from '../../../types/specialty';
+import { optionalGoogleMapsUrlSchema } from '../../../utils/google-maps';
+import { buyPlacesSchema, buyPlacesToPayload, normalizeBuyPlaces } from './specialty-buy-places';
 
 const descriptionSchema = z.object({
   text: z.string().trim().min(1, 'Không được để trống').max(5000, 'Tối đa 5.000 ký tự'),
-});
-const buyPlaceSchema = z.object({
-  text: z.string().trim().min(1, 'Không được để trống').max(200, 'Tối đa 200 ký tự'),
 });
 
 export const specialtyFormSchema = z
@@ -14,9 +13,10 @@ export const specialtyFormSchema = z
     category: z.enum(['Món ăn', 'Trái cây', 'Quà mang về']),
     price: z.string().trim().min(1, 'Bắt buộc').max(100, 'Tối đa 100 ký tự'),
     season: z.string().trim().min(1, 'Bắt buộc').max(100, 'Tối đa 100 ký tự'),
+    googleMapsUrl: optionalGoogleMapsUrlSchema,
     summary: z.string().trim().min(1, 'Bắt buộc').max(300, 'Tối đa 300 ký tự'),
     descriptions: z.array(descriptionSchema).min(1, 'Cần ít nhất một đoạn').max(20, 'Tối đa 20 đoạn'),
-    buyPlaces: z.array(buyPlaceSchema).max(20, 'Tối đa 20 địa điểm'),
+    buyPlaces: buyPlacesSchema,
     mediaId: z.string().nullable().optional(),
     imageUrl: z.string().nullable().optional(),
     imageAlt: z.string().trim().max(150, 'Tối đa 150 ký tự'),
@@ -36,6 +36,7 @@ export const EMPTY_SPECIALTY_FORM: SpecialtyFormValues = {
   category: 'Món ăn',
   price: '',
   season: '',
+  googleMapsUrl: '',
   summary: '',
   descriptions: [{ text: '' }],
   buyPlaces: [],
@@ -46,15 +47,17 @@ export const EMPTY_SPECIALTY_FORM: SpecialtyFormValues = {
   sortOrder: 0,
 };
 
+/** Đọc được cả dữ liệu cũ (string[]) lẫn mới (SpecialtyBuyPlace[]). */
 export function specialtyToForm(item: SpecialtyAdminItem): SpecialtyFormValues {
   return {
     name: item.name,
     category: item.category,
     price: item.price,
     season: item.season,
+    googleMapsUrl: item.googleMapsUrl ?? '',
     summary: item.summary,
     descriptions: item.description.map((text) => ({ text })),
-    buyPlaces: item.buyPlaces.map((text) => ({ text })),
+    buyPlaces: normalizeBuyPlaces(item.buyPlaces),
     mediaId: item.mediaId,
     imageUrl: item.imageUrl,
     imageAlt: item.imageAlt,
@@ -63,15 +66,17 @@ export function specialtyToForm(item: SpecialtyAdminItem): SpecialtyFormValues {
   };
 }
 
+/** Payload gửi backend: buyPlaces là mảng object JSON, không phải string[]. */
 export function formToPayload(value: SpecialtyFormValues): SpecialtyPayload {
   return {
     name: value.name.trim(),
     category: value.category,
     price: value.price.trim(),
     season: value.season.trim(),
+    googleMapsUrl: value.googleMapsUrl.trim(),
     summary: value.summary.trim(),
     description: value.descriptions.map((item) => item.text.trim()),
-    buyPlaces: value.buyPlaces.map((item) => item.text.trim()),
+    buyPlaces: buyPlacesToPayload(value.buyPlaces),
     mediaId: value.mediaId,
     imageAlt: value.imageAlt.trim(),
     isActive: value.isActive,
