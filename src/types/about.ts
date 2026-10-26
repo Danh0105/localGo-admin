@@ -67,7 +67,7 @@ export interface AboutDraft {
   hasUnpublishedChanges: boolean;
   publishedAt?: string;
   publishedBy?: string;
-  updatedAt: string;
+  updatedAt: string | null;
   updatedBy?: string;
 }
 
@@ -87,7 +87,7 @@ export interface AboutAdminState {
   version: number;
   publishedVersion: number;
   publishedAt: string | null;
-  updatedAt: string;
+  updatedAt: string | null;
   hasUnpublishedChanges: boolean;
 }
 

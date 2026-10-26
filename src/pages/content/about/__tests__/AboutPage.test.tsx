@@ -117,6 +117,27 @@ afterEach(() => {
 });
 
 describe('AboutPage', () => {
+  it('opens a blank form before the first save and discards unsaved typing locally', async () => {
+    mockedAboutApi.fetchAboutAdmin.mockResolvedValue(makeDraft({
+      version: 1, title: '', hero: { imageAlt: '' },
+      overview: { title: '', paragraphs: [] }, statistics: [],
+      highlightsSectionTitle: '', highlights: [], milestonesSectionTitle: '', milestones: [],
+      publishedAt: undefined, updatedAt: null, hasUnpublishedChanges: false,
+    }));
+    renderPage();
+    expect(await screen.findByText('Chưa có nội dung Giới thiệu')).toBeInTheDocument();
+    const title = screen.getByPlaceholderText('VD: Về LocalGo');
+    expect(title).toHaveValue('');
+    expect(screen.getByText('Chưa xuất bản')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Lưu nháp/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Xem trước/ })).toBeDisabled();
+    await user.type(title, 'Nội dung mới');
+    expect(screen.getByRole('button', { name: /Lưu nháp/ })).toBeEnabled();
+    await user.click(screen.getByRole('button', { name: /Hủy thay đổi/ }));
+    expect(title).toHaveValue('');
+    expect(mockedAboutApi.discardAboutDraft).not.toHaveBeenCalled();
+  });
+
   it('renders data from GET /admin/about', async () => {
     mockedAboutApi.fetchAboutAdmin.mockResolvedValue(makeDraft());
     renderPage();

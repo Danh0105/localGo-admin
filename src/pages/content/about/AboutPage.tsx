@@ -20,7 +20,7 @@ import { HighlightsSection } from './sections/HighlightsSection';
 import { MilestonesSection } from './sections/MilestonesSection';
 import './about-page.css';
 
-function formatDate(value?: string): string {
+function formatDate(value?: string | null): string {
   return value ? new Date(value).toLocaleString('vi-VN') : '—';
 }
 
@@ -170,6 +170,10 @@ export function AboutPage(): JSX.Element {
   }
 
   function handleDiscardClick(): void {
+    if (!aboutQuery.data?.publishedAt) {
+      reset(draftToFormValues(aboutQuery.data!));
+      return;
+    }
     Modal.confirm({
       title: 'Hủy các thay đổi chưa xuất bản?',
       content: 'Nội dung sẽ quay về bản đã xuất bản gần nhất. Hành động này không thể hoàn tác.',
@@ -251,13 +255,13 @@ export function AboutPage(): JSX.Element {
           </Typography.Text>
         </div>
         <Space wrap>
-          <Button icon={<EyeOutlined />} onClick={openPreview} loading={previewQuery.isFetching}>
+          <Button icon={<EyeOutlined />} onClick={openPreview} loading={previewQuery.isFetching} disabled={!draft.updatedAt && !isDirty}>
             Xem trước
           </Button>
           <Button
             icon={<RollbackOutlined />}
             onClick={handleDiscardClick}
-            disabled={(!isDirty && !draft.hasUnpublishedChanges) || discardMutation.isPending || saveMutation.isPending}
+            disabled={(!isDirty && (!draft.publishedAt || !draft.hasUnpublishedChanges)) || discardMutation.isPending || saveMutation.isPending}
             loading={discardMutation.isPending}
           >
             Hủy thay đổi
@@ -284,6 +288,15 @@ export function AboutPage(): JSX.Element {
           )}
         </Space>
       </div>
+
+      {!draft.updatedAt && (
+        <Alert
+          type="info"
+          showIcon
+          message="Chưa có nội dung Giới thiệu"
+          description="Nhập nội dung vào form bên dưới rồi lưu nháp. Nội dung chỉ hiển thị trên Mini App sau khi xuất bản."
+        />
+      )}
 
       {conflict && (
         <Alert
